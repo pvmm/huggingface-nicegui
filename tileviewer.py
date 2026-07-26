@@ -31,7 +31,7 @@ class TileViewer:
     threshold_status: BoolStatus
     waiting_tile_editor: BoolStatus
     reuse_tiles: list[int]
-    total_tiles: list[int]
+    total_tiles: list[int] = 0
     threshold: float
     zoom: int
     grid_width: int
@@ -42,6 +42,10 @@ class TileViewer:
     images64: list[str]
     current_frame: int
     allow_save: BoolStatus
+    # pattern generator table
+    pgt: dict[str | int, tuple[int, list[int]]] = {}
+    # pattern name table (odd, even)
+    pnt: tuple[list[int], list[int]] = ([], [])
 
     ui.add_css('''
         .pixelated {
@@ -324,8 +328,8 @@ class TileViewer:
 
     def process_tiles(self, threshold: float) -> None:
         """Run outside class so we don't have to pickle it."""
-        self.reuse_tiles, self.total_tiles = [0, 0, 0], [0, 0, 0]
-        self.reuse_tiles[0], self.total_tiles[0] = self.engine.stats(self.msx, 0, 64, threshold)
-        self.reuse_tiles[1], self.total_tiles[1] = self.engine.stats(self.msx, 64, 128, threshold)
-        self.reuse_tiles[2], self.total_tiles[2] = self.engine.stats(self.msx, 128, 196, threshold)
+        self.reuse_tiles, self.total_tiles, self.pgt, self.pnt = [0, 0, 0], [0, 0, 0], {}, ([], [])
+        self.reuse_tiles[0], self.total_tiles[0], pgt, pnt = self.engine.stats(self.msx, 0, 64, threshold)
+        self.reuse_tiles[1], self.total_tiles[1], pgt, pnt = self.engine.stats(self.msx, 64, 128, threshold)
+        self.reuse_tiles[2], self.total_tiles[2], pgt, pnt = self.engine.stats(self.msx, 128, 196, threshold)
 
