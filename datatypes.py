@@ -1,5 +1,5 @@
 from __future__ import annotations  # 1. Add this at the top
-from typing import Self
+from typing import Self, Iterator
 
 from v9918 import divide_colors, DEFAULT_FG_COLOR, DEFAULT_BG_COLOR
 
@@ -181,6 +181,10 @@ class Tile:
     def __str__(self) -> str:
         className = self.__class__.__name__
         return f'{className}({' '.join([str(x) for x in self.rows])})'
+
+
+    def __iter__(self) -> Iterator[TileRow]:
+        return iter(self.rows)
 
 
     def __len__(self) -> int:

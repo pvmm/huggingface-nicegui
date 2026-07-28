@@ -17,7 +17,7 @@ from datatypes import Tile, from_105_to_metatile, TILE_SIZE, TileRow
 from tileeditor import TileEditor
 from imageslider import ImageSliderWidget
 
-from bmpto105 import Engine, MSXBitmap_105
+from bmpto105 import Engine, MSXBitmap, MSXBitmapUnit, PGT, PNT, RGBColor
 
 
 PALETTE = [
@@ -30,22 +30,22 @@ PALETTE = [
 class TileViewer:
     threshold_status: BoolStatus
     waiting_tile_editor: BoolStatus
-    reuse_tiles: list[int]
-    total_tiles: list[int] = 0
+    reuse_tiles: tuple[int, int, int]
+    total_tiles: tuple[int, int, int]
     threshold: float
     zoom: int
     grid_width: int
     grid_height: int
     selected_x: int
     selected_y: int
-    msx: MSXBitmap_105 | None
+    msx: MSXBitmap | None
     images64: list[str]
     current_frame: int
     allow_save: BoolStatus
     # pattern generator table
-    pgt: dict[str | int, tuple[int, list[int]]] = {}
+    pgt: tuple[PGT, PGT, PGT] = ({}, {}, {})
     # pattern name table (odd, even)
-    pnt: tuple[list[int], list[int]] = ([], [])
+    pnt: tuple[PNT, PNT, PNT] = (([], []), ([], []), ([], []))
 
     ui.add_css('''
         .pixelated {
@@ -81,8 +81,8 @@ class TileViewer:
         self.allow_save = d
 
         self.engine = Engine(PALETTE)
-        self.reuse_tiles = [0, 0, 0]
-        self.total_tiles = [0, 0, 0]
+        self.reuse_tiles = (0, 0, 0)
+        self.total_tiles = (0, 0, 0)
         self.threshold = 0.0
         self.zoom = 4
         self.grid_width = 8
@@ -117,12 +117,12 @@ class TileViewer:
                 self.grid_width_number = cast(ui.number, disable(
                     ui.number(label='Metatile Width', min=8, value=8, step=8, format='%i',
                               on_change=lambda e: self.on_change_grid_size('w', e),
-                              validation={'metatile size mismatch': lambda value: self.msx.width * TILE_SIZE % value == 0})
+                              validation={'metatile size mismatch': lambda value: (self.msx.width * TILE_SIZE % value == 0) if self.msx else False})
                 ))
                 self.grid_height_number = cast(ui.number, disable(
                     ui.number(label='Metatile Height', min=8, value=8, step=8, format='%i',
                               on_change=lambda e: self.on_change_grid_size('h', e),
-                             validation={'metatile size mismatch': lambda value: self.msx.width * TILE_SIZE % value == 0})
+                             validation={'metatile size mismatch': lambda value: (self.msx.width * TILE_SIZE % value == 0) if self.msx else False})
                 ))
 
             with ui.scroll_area().classes('w-full flex-1 border bg-gray-200').on('contextmenu.prevent', lambda: None):
@@ -321,15 +321,32 @@ class TileViewer:
                     if x % TILE_SIZE == 0:
                         fg, bg = row.get_fg(x), row.get_bg(x)
                     bit = True if row[x] == fg else False
-                    self.msx[y + self.selected_y][(x + self.selected_x) // TILE_SIZE].from_rgb(x % TILE_SIZE, bit, fg, bg, frame)
+                    bpu: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[y + self.selected_y][(x + self.selected_x) // TILE_SIZE])
+                    bpu.from_rgb(x % TILE_SIZE, bit, fg, bg, frame)
             self.render_images(self.current_frame)
         self.waiting_tile_editor.disable()
 
 
     def process_tiles(self, threshold: float) -> None:
         """Run outside class so we don't have to pickle it."""
-        self.reuse_tiles, self.total_tiles, self.pgt, self.pnt = [0, 0, 0], [0, 0, 0], {}, ([], [])
-        self.reuse_tiles[0], self.total_tiles[0], pgt, pnt = self.engine.stats(self.msx, 0, 64, threshold)
-        self.reuse_tiles[1], self.total_tiles[1], pgt, pnt = self.engine.stats(self.msx, 64, 128, threshold)
-        self.reuse_tiles[2], self.total_tiles[2], pgt, pnt = self.engine.stats(self.msx, 128, 196, threshold)
+        if not self.msx: raise AttributeError('MSX image not found')
+        stats = (
+             self.engine.stats(self.msx, 0, 64, threshold),
+             self.engine.stats(self.msx, 64, 128, threshold),
+             self.engine.stats(self.msx, 128, 196, threshold)
+        )
+        reuse_tiles = [0, 0, 0]
+        total_tiles = [0, 0, 0]
+        pgt: list[PGT] = [{}, {}, {}]
+        pnt: list[PNT] = [([], []), ([], []), ([], [])]
 
+        for n, region in enumerate(stats):
+            reuse_tiles[n] = region['reused']
+            total_tiles[n] = region['total']
+            pgt[n] = region['pgt']
+            pnt[n] = region['pnt']
+
+        self.pgt = (pgt[0], pgt[1], pgt[2])
+        self.pnt = (pnt[0], pnt[1], pnt[2])
+        self.reuse_tiles = (reuse_tiles[0], reuse_tiles[1], reuse_tiles[2])
+        self.total_tiles = (total_tiles[0], total_tiles[1], total_tiles[2])
