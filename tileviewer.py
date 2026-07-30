@@ -3,6 +3,7 @@ from nicegui import ui, app, events, run
 from PIL import Image
 from io import BytesIO
 
+import sys
 import base64
 import traceback
 
@@ -46,6 +47,8 @@ class TileViewer:
     pgt: tuple[PGT, PGT, PGT] = ({}, {}, {})
     # pattern name table (odd, even)
     pnt: tuple[PNT, PNT, PNT] = (([], []), ([], []), ([], []))
+    # pattern list table
+    pcl: tuple[PCL, PCL, PCL] = (([], []), ([], []), ([], []))
 
     ui.add_css('''
         .pixelated {
@@ -122,7 +125,7 @@ class TileViewer:
                 self.grid_height_number = cast(ui.number, disable(
                     ui.number(label='Metatile Height', min=8, value=8, step=8, format='%i',
                               on_change=lambda e: self.on_change_grid_size('h', e),
-                             validation={'metatile size mismatch': lambda value: (self.msx.width * TILE_SIZE % value == 0) if self.msx else False})
+                              validation={'metatile size mismatch': lambda value: (self.msx.width * TILE_SIZE % value == 0) if self.msx else False})
                 ))
 
             with ui.scroll_area().classes('w-full flex-1 border bg-gray-200').on('contextmenu.prevent', lambda: None):
@@ -147,12 +150,16 @@ class TileViewer:
                     ui.label('/')
                     self.total_badges.append(ui.badge('0', color='purple').tooltip('bottom 64x8 tiles'))
 
-                self.threshold_number = (
-                        ui.number(label='DCT Threshold', min=0.0, value=0.0, step=0.1, max=1.0, format='%0.1f',
-                                  on_change=self.on_change_threshold).classes('w-[170px]').props('debounce=500')
-                        .bind_enabled_from(self.threshold_status, 'is_enabled')
-                )
-
+                with ui.row().classes('flex-nowrap items-center'):
+                    self.threshold_number = (
+                            ui.number(label='DCT Threshold', min=0.0, value=0.0, step=0.1, max=1.0, format='%0.1f',
+                                      on_change=self.on_change_threshold,
+                                      validation={'not a number': lambda val: val is not None}
+                                  ).classes('w-[170px]').props('debounce=500')
+                            .bind_enabled_from(self.threshold_status, 'is_enabled')
+                    )
+                    ui.button('update image', on_click=self.on_update_clicked) \
+                            .bind_enabled_from(self.threshold_status, 'is_enabled')
 
         ui.on("tile_clicked", self.on_tile_clicked)
 
@@ -256,13 +263,13 @@ class TileViewer:
     async def on_change_threshold(self, event: events.ValueChangeEventArguments[float | None]) -> None:
         try:
             self.threshold_status.disable()
-            await run.io_bound(self.process_tiles, cast(float, event.value))
+            await run.io_bound(self.process_tiles, float(event.value))
             self.threshold = cast(float, event.value)
-            self.threshold_status.enable()
             self.update_tile_info()
         except Exception as e:
             traceback.print_exc()
-            ui.notify(e)
+        finally:
+            self.threshold_status.enable()
 
 
     def on_save_image_clicked(self) -> None:
@@ -333,20 +340,58 @@ class TileViewer:
         stats = (
              self.engine.stats(self.msx, 0, 64, threshold),
              self.engine.stats(self.msx, 64, 128, threshold),
-             self.engine.stats(self.msx, 128, 196, threshold)
+             self.engine.stats(self.msx, 128, 192, threshold)
         )
-        reuse_tiles = [0, 0, 0]
-        total_tiles = [0, 0, 0]
-        pgt: list[PGT] = [{}, {}, {}]
+
+        pgt: list[PGT] = [({}, {}), ({}, {}), ({}, {})]
         pnt: list[PNT] = [([], []), ([], []), ([], [])]
-
+        pcl: list[PCL] = [([], []), ([], []), ([], [])]
         for n, region in enumerate(stats):
-            reuse_tiles[n] = region['reused']
-            total_tiles[n] = region['total']
-            pgt[n] = region['pgt']
-            pnt[n] = region['pnt']
+            pgt[n] = (region['pgt'][0], region['pgt'][1])
+            pnt[n] = (region['pnt'][0], region['pnt'][1])
+            pcl[n] = (region['pcl'][0], region['pcl'][1])
 
-        self.pgt = (pgt[0], pgt[1], pgt[2])
-        self.pnt = (pnt[0], pnt[1], pnt[2])
-        self.reuse_tiles = (reuse_tiles[0], reuse_tiles[1], reuse_tiles[2])
-        self.total_tiles = (total_tiles[0], total_tiles[1], total_tiles[2])
+        self.pgt = ((pgt[0][0], pgt[0][1]),
+                    (pgt[1][0], pgt[1][1]),
+                    (pgt[2][0], pgt[2][1]))
+
+        self.pnt = ((pnt[0][0], pnt[0][1]),
+                    (pnt[1][0], pnt[1][1]),
+                    (pnt[2][0], pnt[2][1]))
+
+        self.pcl = ((pcl[0][0], pcl[0][1]),
+                    (pcl[1][0], pcl[1][1]),
+                    (pcl[2][0], pcl[2][1]))
+
+        self.reuse_tiles = (len(pcl[0][0]) + len(pcl[0][1]),
+                            len(pcl[1][0]) + len(pcl[1][1]),
+                            len(pcl[2][0]) + len(pcl[2][1]))
+
+        self.total_tiles = (len(pgt[0][0]) + len(pgt[0][1]),
+                            len(pgt[1][0]) + len(pgt[1][1]),
+                            len(pgt[2][0]) + len(pgt[2][1]))
+
+
+    def on_update_clicked(self) -> None:
+        self.update_image()
+
+
+    def update_image(self) -> None:
+        for region in range(3):
+            for frame in range(2):
+                #mappings = {v : n for n, v in enumerate(self.pgt[region][frame])}
+                for x, y, hash_ in self.pcl[region][frame]:
+                    pos = self.pgt[region][frame][hash_][0]
+                    if frame == 0:
+                        print(f'frame {frame}: ({x}, {y}), repetition of tile at {pos}')
+                        for n, (c, p) in enumerate(self.pgt[region][frame][hash_][1:]):
+                            tile = self.msx[region * 64 + y * TILE_SIZE + n][x]
+                            tile.c0 = c
+                            tile.p0 = p
+                    elif frame == 1:
+                        for n, (c, p) in enumerate(self.pgt[region][frame][hash_][1:]):
+                            tile = self.msx[region * 64 + y * TILE_SIZE + n][x]
+                            tile.c1 = c
+                            tile.p1 = p
+
+        self.render_images(self.current_frame)
