@@ -327,6 +327,7 @@ class TileViewer:
                 ui.button('OK', on_click=lambda: dialog.submit(True))
                 ui.button('Cancel', on_click=lambda: dialog.submit(False))
         if await dialog:
+            # update MSX image with changed tile
             y: int
             row: TileRow
             for y, row in enumerate(editor.grid):
@@ -337,6 +338,7 @@ class TileViewer:
                     bit = True if row[x] == fg else False
                     bpu: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[y + self.selected_y][(x + self.selected_x) // TILE_SIZE])
                     bpu.from_rgb(x % TILE_SIZE, bit, fg, bg, frame)
+            # update PGT and PNT structures (TODO: update only the affected region)
             self.process_tiles(0.0)
             self.render_images(self.current_frame)
         self.waiting_tile_editor.disable()
@@ -383,10 +385,9 @@ class TileViewer:
 
 
     def on_update_clicked(self) -> None:
-        #if self.dirty_status:
-        #    # update pcl and clear dirty flag
-        #    self.process_tiles(0.0)
+        self.process_tiles(0.0)
         self.process_image()
+        self.dirty_status.disable()
 
 
     def process_image(self) -> None:
