@@ -29,7 +29,7 @@ PALETTE = [
 
 
 class TileViewer:
-    dirty_image: bool
+    dirty_status: BoolStatus
     threshold_status: BoolStatus
     waiting_tile_editor: BoolStatus
     reuse_tiles: tuple[int, int, int]
@@ -67,9 +67,13 @@ class TileViewer:
     frame_toggle: ui.toggle
 
     def __init__(self, image: Image.Image | None = None) -> None:
-        self.dirty_image = True
         self.msx = None
         if image: self.set_image(image)
+
+        a = BoolStatus(
+                inherent_state=False,
+                function=lambda: (not self.msx is None))
+        self.dirty_status = a
 
         b = BoolStatus(
                 inherent_state=False,
@@ -161,7 +165,7 @@ class TileViewer:
                             .bind_enabled_from(self.threshold_status, 'is_enabled')
                     )
                     ui.button('update image', on_click=self.on_update_clicked) \
-                            .bind_enabled_from(self.threshold_status, 'is_enabled')
+                            .bind_enabled_from(self.dirty_status, 'is_enabled')
 
         ui.on("tile_clicked", self.on_tile_clicked)
 
@@ -268,6 +272,7 @@ class TileViewer:
             await run.io_bound(self.process_tiles, float(event.value))
             self.threshold = cast(float, event.value)
             self.update_tile_info()
+            self.dirty_status.enable()
         except Exception as e:
             traceback.print_exc()
         finally:
@@ -332,7 +337,7 @@ class TileViewer:
                     bit = True if row[x] == fg else False
                     bpu: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[y + self.selected_y][(x + self.selected_x) // TILE_SIZE])
                     bpu.from_rgb(x % TILE_SIZE, bit, fg, bg, frame)
-            self.dirty_image = True
+            self.process_tiles(0.0)
             self.render_images(self.current_frame)
         self.waiting_tile_editor.disable()
 
@@ -340,6 +345,9 @@ class TileViewer:
     def process_tiles(self, threshold: float) -> None:
         """Run outside class so we don't have to pickle it."""
         if not self.msx: raise AttributeError('MSX image not found')
+
+        self.dirty_status.disable()
+
         stats = (
              self.engine.stats(self.msx, 0, 64, threshold),
              self.engine.stats(self.msx, 64, 128, threshold),
@@ -371,14 +379,13 @@ class TileViewer:
         self.total_tiles = (len(pgt[0][0]) + len(pgt[0][1]),
                             len(pgt[1][0]) + len(pgt[1][1]),
                             len(pgt[2][0]) + len(pgt[2][1]))
-
-        self.dirty_image = False
+        self.update_tile_info()
 
 
     def on_update_clicked(self) -> None:
-        if self.dirty_image:
-            # update pcl and clear dirty flag
-            self.process_tiles(0.0)
+        #if self.dirty_status:
+        #    # update pcl and clear dirty flag
+        #    self.process_tiles(0.0)
         self.process_image()
 
 
