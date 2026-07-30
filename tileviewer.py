@@ -29,6 +29,7 @@ PALETTE = [
 
 
 class TileViewer:
+    dirty_image: bool
     threshold_status: BoolStatus
     waiting_tile_editor: BoolStatus
     reuse_tiles: tuple[int, int, int]
@@ -66,6 +67,7 @@ class TileViewer:
     frame_toggle: ui.toggle
 
     def __init__(self, image: Image.Image | None = None) -> None:
+        self.dirty_image = True
         self.msx = None
         if image: self.set_image(image)
 
@@ -330,6 +332,7 @@ class TileViewer:
                     bit = True if row[x] == fg else False
                     bpu: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[y + self.selected_y][(x + self.selected_x) // TILE_SIZE])
                     bpu.from_rgb(x % TILE_SIZE, bit, fg, bg, frame)
+            self.dirty_image = True
             self.render_images(self.current_frame)
         self.waiting_tile_editor.disable()
 
@@ -346,6 +349,7 @@ class TileViewer:
         pgt: list[PGT] = [({}, {}), ({}, {}), ({}, {})]
         pnt: list[PNT] = [([], []), ([], []), ([], [])]
         pcl: list[PCL] = [([], []), ([], []), ([], [])]
+
         for n, region in enumerate(stats):
             pgt[n] = (region['pgt'][0], region['pgt'][1])
             pnt[n] = (region['pnt'][0], region['pnt'][1])
@@ -354,11 +358,9 @@ class TileViewer:
         self.pgt = ((pgt[0][0], pgt[0][1]),
                     (pgt[1][0], pgt[1][1]),
                     (pgt[2][0], pgt[2][1]))
-
         self.pnt = ((pnt[0][0], pnt[0][1]),
                     (pnt[1][0], pnt[1][1]),
                     (pnt[2][0], pnt[2][1]))
-
         self.pcl = ((pcl[0][0], pcl[0][1]),
                     (pcl[1][0], pcl[1][1]),
                     (pcl[2][0], pcl[2][1]))
@@ -366,17 +368,21 @@ class TileViewer:
         self.reuse_tiles = (len(pcl[0][0]) + len(pcl[0][1]),
                             len(pcl[1][0]) + len(pcl[1][1]),
                             len(pcl[2][0]) + len(pcl[2][1]))
-
         self.total_tiles = (len(pgt[0][0]) + len(pgt[0][1]),
                             len(pgt[1][0]) + len(pgt[1][1]),
                             len(pgt[2][0]) + len(pgt[2][1]))
 
+        self.dirty_image = False
+
 
     def on_update_clicked(self) -> None:
-        self.update_image()
+        if self.dirty_image:
+            # update pcl and clear dirty flag
+            self.process_tiles(0.0)
+        self.process_image()
 
 
-    def update_image(self) -> None:
+    def process_image(self) -> None:
         for region in range(3):
             for frame in range(2):
                 #mappings = {v : n for n, v in enumerate(self.pgt[region][frame])}
