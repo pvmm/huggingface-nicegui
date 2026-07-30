@@ -38,7 +38,7 @@ TileViewer = class {
         this.canvas.height = this.image.height * this.zoom;
         this.drawImage();
         this.drawGrid();
-        this.drawSelection();
+        // this.drawSelection();
     }
 
     drawImage() {
