@@ -373,7 +373,6 @@ class TileViewer:
     def process_tiles(self, algorithm: str, threshold: float) -> None:
         """Run outside class so we don't have to pickle it."""
         if not self.msx: raise AttributeError('MSX image not found')
-        print(f'process_tiles({algorithm}, {threshold})')
 
         self.dirty_status.disable()
 
