@@ -65,6 +65,7 @@ class TileViewer:
     reuse_badges: list[ui.badge]
     total_badges: list[ui.badge]
     frame_toggle: ui.toggle
+    threshold_dropdown: ui.dropdown_button
 
     def __init__(self, image: Image.Image | None = None) -> None:
         self.msx = None
@@ -275,7 +276,7 @@ class TileViewer:
             return
         try:
             self.threshold_status.disable()
-            await run.io_bound(self.process_tiles, float(event.value))
+            self.process_tiles(self.threshold_dropdown.text, 0.0)
             self.threshold = cast(float, event.value)
             self.update_tile_info()
             self.dirty_status.enable()
