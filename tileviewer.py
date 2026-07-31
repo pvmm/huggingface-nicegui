@@ -157,8 +157,12 @@ class TileViewer:
                     self.total_badges.append(ui.badge('0', color='purple').tooltip('bottom 64x8 tiles'))
 
                 with ui.row().classes('flex-nowrap items-center'):
+                    ui.label('Compression type:')
+                    with ui.dropdown_button('DCT', auto_close=True) as self.threshold_dropdown:
+                        ui.item('DCT', on_click=lambda: self.threshold_dropdown.set_text('DCT'))
+                        ui.item('SVD', on_click=lambda: self.threshold_dropdown.set_text('SVD'))
                     self.threshold_number = (
-                            ui.number(label='DCT Threshold', min=0.0, value=0.0, step=0.1, max=1.0, format='%0.1f',
+                            ui.number(label='Threshold', min=0.0, value=0.0, step=0.1, max=1.0, format='%0.1f',
                                       on_change=self.on_change_threshold,
                                       validation={'not a number': lambda val: val is not None}
                                   ).classes('w-[170px]').props('debounce=500')
@@ -203,7 +207,7 @@ class TileViewer:
             return
 
         # update tile info
-        self.process_tiles(self.threshold)
+        self.process_tiles(self.threshold_dropdown.text, 0.0)
         self.update_tile_info()
 
         # reset visible images
@@ -266,7 +270,7 @@ class TileViewer:
             self.redraw()
 
 
-    async def on_change_threshold(self, event: events.ValueChangeEventArguments[float | None]) -> None:
+    def on_change_threshold(self, event: events.ValueChangeEventArguments[float | None]) -> None:
         if event.value is None:
             return
         try:
@@ -341,21 +345,22 @@ class TileViewer:
                     bpu: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[y + self.selected_y][(x + self.selected_x) // TILE_SIZE])
                     bpu.from_rgb(x % TILE_SIZE, bit, fg, bg, frame)
             # update PGT and PNT structures (TODO: update only the affected region)
-            self.process_tiles(0.0)
+            self.process_tiles(self.threshold_dropdown.text, 0.0)
             self.render_images(self.current_frame)
         self.waiting_tile_editor.disable()
 
 
-    def process_tiles(self, threshold: float) -> None:
+    def process_tiles(self, algorithm: str, threshold: float) -> None:
         """Run outside class so we don't have to pickle it."""
         if not self.msx: raise AttributeError('MSX image not found')
+        print(f'process_tiles({algorithm}, {threshold})')
 
         self.dirty_status.disable()
 
         stats = (
-             self.engine.stats(self.msx, 0, 64, threshold),
-             self.engine.stats(self.msx, 64, 128, threshold),
-             self.engine.stats(self.msx, 128, 192, threshold)
+             self.engine.stats(self.msx, 0, 64, threshold, algorithm),
+             self.engine.stats(self.msx, 64, 128, threshold, algorithm),
+             self.engine.stats(self.msx, 128, 192, threshold, algorithm)
         )
 
         pgt: list[PGT] = [({}, {}), ({}, {}), ({}, {})]
