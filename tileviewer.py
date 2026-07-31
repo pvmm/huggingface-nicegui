@@ -267,6 +267,8 @@ class TileViewer:
 
 
     async def on_change_threshold(self, event: events.ValueChangeEventArguments[float | None]) -> None:
+        if event.value is None:
+            return
         try:
             self.threshold_status.disable()
             await run.io_bound(self.process_tiles, float(event.value))
