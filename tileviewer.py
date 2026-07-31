@@ -29,6 +29,7 @@ PALETTE = [
 
 
 class TileViewer:
+    loaded_status: BoolStatus
     dirty_status: BoolStatus
     threshold_status: BoolStatus
     waiting_tile_editor: BoolStatus
@@ -43,7 +44,7 @@ class TileViewer:
     msx: MSXBitmap | None
     images64: list[str]
     current_frame: int
-    allow_save: BoolStatus
+    allow_export: BoolStatus
     # pattern generator table
     pgt: tuple[PGT, PGT, PGT] = ({}, {}, {})
     # pattern name table (odd, even)
@@ -71,24 +72,27 @@ class TileViewer:
         self.msx = None
         if image: self.set_image(image)
 
-        a = BoolStatus(
+        b0 = BoolStatus(function=lambda: (not self.msx is None))
+        self.load_status = b0
+
+        b1 = BoolStatus(
                 inherent_state=False,
                 function=lambda: (not self.msx is None))
-        self.dirty_status = a
+        self.dirty_status = b1
 
-        b = BoolStatus(
+        b2 = BoolStatus(
                 inherent_state=False,
                 function=lambda: (not self.msx is None))
-        self.threshold_status = b
+        self.threshold_status = b2
 
-        c = BoolStatus(
+        b3 = BoolStatus(
                 inherent_state=False,
                 function=lambda: (not self.msx is None))
-        self.waiting_tile_editor = c
+        self.waiting_tile_editor = b3
 
-        d = BoolStatus(
+        b4 = BoolStatus(
                 function=lambda: (not self.msx is None) and all([n < 256 for n in self.total_tiles]))
-        self.allow_save = d
+        self.allow_export = b4
 
         self.engine = Engine(PALETTE)
         self.reuse_tiles = (0, 0, 0)
@@ -120,7 +124,10 @@ class TileViewer:
                         .props('reverse').classes('w-[100px]')
                 )
 
-                ui.button('save image', on_click=self.on_save_image_clicked).bind_enabled_from(self.allow_save, 'is_enabled')
+                with ui.dropdown_button('export as', auto_close=True).bind_enabled_from(self.load_status, 'is_enabled') as self.export_dropdown:
+                    ui.item('PNG image', on_click=self.on_export_to_png_clicked)
+                    ui.item('MSX image', on_click=self.on_export_to_msx_clicked).bind_enabled_from(self.allow_export, 'is_enabled')
+                    ui.item('C code', on_click=self.on_export_to_c_clicked).bind_enabled_from(self.allow_export, 'is_enabled')
 
                 ui.space()
 
@@ -286,11 +293,23 @@ class TileViewer:
             self.threshold_status.enable()
 
 
-    def on_save_image_clicked(self) -> None:
+    def on_export_to_msx_clicked(self) -> None:
         if self.msx:
-            bytes_ = BytesIO()
+            buffer = BytesIO()
             self.msx.save(bytes_)
-            ui.download.content(bytes_.getvalue(), 'image.si2')
+            ui.download.content(buffer.getvalue(), 'image.si2')
+
+
+    def on_export_to_png_clicked(self) -> None:
+        if self.msx:
+            buffer = BytesIO()
+            image = self.msx.to_image(3)
+            image.save(buffer, format='PNG')
+            ui.download.content(buffer.getvalue(), 'image.png')
+
+
+    def on_export_to_c_clicked(self) -> None:
+        pass
 
 
     def redraw(self) -> None:
