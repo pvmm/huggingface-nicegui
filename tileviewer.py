@@ -387,7 +387,6 @@ class TileViewer:
 
 
     def on_update_clicked(self) -> None:
-        self.process_tiles(0.0)
         self.process_image()
         self.dirty_status.disable()
 
