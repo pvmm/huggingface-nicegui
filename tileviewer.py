@@ -18,7 +18,7 @@ from datatypes import Tile, from_105_to_metatile, TILE_SIZE, TileRow
 from tileeditor import TileEditor
 from imageslider import ImageSliderWidget
 
-from bmpto105 import Engine, MSXBitmap, MSXBitmapUnit, PGT, PNT, RGBColor
+from bmpto105 import Engine, MSXBitmap, MSXBitmapRow, MSXBitmapUnit, PGT, PNT, RGBColor, PCL
 
 
 PALETTE = [
@@ -46,7 +46,7 @@ class TileViewer:
     current_frame: int
     allow_export: BoolStatus
     # pattern generator table
-    pgt: tuple[PGT, PGT, PGT] = ({}, {}, {})
+    pgt: tuple[PGT, PGT, PGT] = (({}, {}), ({}, {}), ({}, {}))
     # pattern name table (odd, even)
     pnt: tuple[PNT, PNT, PNT] = (([], []), ([], []), ([], []))
     # pattern list table
@@ -284,7 +284,7 @@ class TileViewer:
         try:
             self.threshold_status.disable()
             self.process_tiles(self.threshold_dropdown.text, 0.0)
-            self.threshold = cast(float, event.value)
+            self.threshold = event.value
             self.update_tile_info()
             self.dirty_status.enable()
         except Exception as e:
@@ -296,7 +296,7 @@ class TileViewer:
     def on_export_to_msx_clicked(self) -> None:
         if self.msx:
             buffer = BytesIO()
-            self.msx.save(bytes_)
+            self.msx.save(buffer)
             ui.download.content(buffer.getvalue(), 'image.si2')
 
 
@@ -416,6 +416,7 @@ class TileViewer:
 
 
     def process_image(self) -> None:
+        if not self.msx: raise AttributeError('MSX image not found')
         for region in range(3):
             for frame in range(2):
                 #mappings = {v : n for n, v in enumerate(self.pgt[region][frame])}
@@ -424,12 +425,12 @@ class TileViewer:
                     if frame == 0:
                         print(f'frame {frame}: ({x}, {y}), repetition of tile at {pos}')
                         for n, (c, p) in enumerate(self.pgt[region][frame][hash_][1:]):
-                            tile = self.msx[region * 64 + y * TILE_SIZE + n][x]
+                            tile: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[region * 64 + y * TILE_SIZE + n][x])
                             tile.c0 = c
                             tile.p0 = p
                     elif frame == 1:
                         for n, (c, p) in enumerate(self.pgt[region][frame][hash_][1:]):
-                            tile = self.msx[region * 64 + y * TILE_SIZE + n][x]
+                            tile = cast(MSXBitmapUnit, self.msx[region * 64 + y * TILE_SIZE + n][x])
                             tile.c1 = c
                             tile.p1 = p
 
