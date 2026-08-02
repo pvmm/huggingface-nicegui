@@ -421,15 +421,13 @@ class TileViewer:
             for frame in range(2):
                 #mappings = {v : n for n, v in enumerate(self.pgt[region][frame])}
                 for x, y, hash_ in self.pcl[region][frame]:
-                    pos = self.pgt[region][frame][hash_][0]
                     if frame == 0:
-                        print(f'frame {frame}: ({x}, {y}), repetition of tile at {pos}')
-                        for n, (c, p) in enumerate(self.pgt[region][frame][hash_][1:]):
+                        for n, (c, p) in enumerate(self.pgt[region][frame][hash_]):
                             tile: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[region * 64 + y * TILE_SIZE + n][x])
                             tile.c0 = c
                             tile.p0 = p
                     elif frame == 1:
-                        for n, (c, p) in enumerate(self.pgt[region][frame][hash_][1:]):
+                        for n, (c, p) in enumerate(self.pgt[region][frame][hash_]):
                             tile = cast(MSXBitmapUnit, self.msx[region * 64 + y * TILE_SIZE + n][x])
                             tile.c1 = c
                             tile.p1 = p
