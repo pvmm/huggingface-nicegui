@@ -372,7 +372,7 @@ class TileViewer:
 
     def process_tiles(self, algorithm: str, threshold: float) -> None:
         """Run outside class so we don't have to pickle it."""
-        if not self.msx: raise AttributeError('MSX image not found')
+        if not self.msx: raise AttributeError('source image not found')
 
         self.dirty_status.disable()
 
@@ -416,7 +416,7 @@ class TileViewer:
 
 
     def process_image(self) -> None:
-        if not self.msx: raise AttributeError('MSX image not found')
+        if not self.msx: raise AttributeError('source image not found')
         for region in range(3):
             for frame in range(2):
                 #mappings = {v : n for n, v in enumerate(self.pgt[region][frame])}
