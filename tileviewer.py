@@ -18,7 +18,7 @@ from datatypes import Tile, from_105_to_metatile, TILE_SIZE, TileRow
 from tileeditor import TileEditor
 from imageslider import ImageSliderWidget
 
-from bmpto105 import Engine, MSXBitmap, MSXBitmapRow, MSXBitmapUnit, PGT, PNT, RGBColor, PCL
+from bmpto105 import Engine, MSXBitmap, MSXBitmapRow, MSXBitmapUnit, RGBColor, ScreenSectionState
 
 
 PALETTE = [
@@ -45,12 +45,7 @@ class TileViewer:
     images64: list[str]
     current_frame: int
     allow_export: BoolStatus
-    # pattern generator table
-    pgt: tuple[PGT, PGT, PGT] = (({}, {}), ({}, {}), ({}, {}))
-    # pattern name table (odd, even)
-    pnt: tuple[PNT, PNT, PNT] = (([], []), ([], []), ([], []))
-    # pattern list table
-    pcl: tuple[PCL, PCL, PCL] = (([], []), ([], []), ([], []))
+    vram: tuple[ScreenSectionState, ScreenSectionState, ScreenSectionState]
 
     ui.add_css('''
         .pixelated {
@@ -215,7 +210,7 @@ class TileViewer:
             return
 
         # update tile info
-        self.process_tiles(self.threshold_dropdown.text, 0.0)
+        self.process_tiles(self.threshold_dropdown.text)
         self.update_tile_info()
 
         # reset visible images
@@ -294,10 +289,11 @@ class TileViewer:
 
 
     def on_export_to_msx_clicked(self) -> None:
-        if self.msx:
-            buffer = BytesIO()
-            self.msx.save(buffer)
-            ui.download.content(buffer.getvalue(), 'image.si2')
+        if not 'pgt' in self.vram[0]:
+            raise AttributeError('source image not processed')
+        buffer = BytesIO()
+        self.msx = self.engine.save(list(self.vram))
+        ui.download.content(buffer.getvalue(), 'image.raw')
 
 
     def on_export_to_png_clicked(self) -> None:
@@ -370,43 +366,22 @@ class TileViewer:
         self.waiting_tile_editor.disable()
 
 
-    def process_tiles(self, algorithm: str, threshold: float) -> None:
+    def process_tiles(self, algorithm: str = 'DCT', threshold: float = 0.0) -> None:
         """Run outside class so we don't have to pickle it."""
         if not self.msx: raise AttributeError('source image not found')
 
         self.dirty_status.disable()
 
-        stats = (
+        self.vram = (
              self.engine.stats(self.msx, 0, 64, threshold, algorithm),
              self.engine.stats(self.msx, 64, 128, threshold, algorithm),
              self.engine.stats(self.msx, 128, 192, threshold, algorithm)
         )
 
-        pgt: list[PGT] = [({}, {}), ({}, {}), ({}, {})]
-        pnt: list[PNT] = [([], []), ([], []), ([], [])]
-        pcl: list[PCL] = [([], []), ([], []), ([], [])]
-
-        for n, region in enumerate(stats):
-            pgt[n] = (region['pgt'][0], region['pgt'][1])
-            pnt[n] = (region['pnt'][0], region['pnt'][1])
-            pcl[n] = (region['pcl'][0], region['pcl'][1])
-
-        self.pgt = ((pgt[0][0], pgt[0][1]),
-                    (pgt[1][0], pgt[1][1]),
-                    (pgt[2][0], pgt[2][1]))
-        self.pnt = ((pnt[0][0], pnt[0][1]),
-                    (pnt[1][0], pnt[1][1]),
-                    (pnt[2][0], pnt[2][1]))
-        self.pcl = ((pcl[0][0], pcl[0][1]),
-                    (pcl[1][0], pcl[1][1]),
-                    (pcl[2][0], pcl[2][1]))
-
-        self.reuse_tiles = (len(pcl[0][0]) + len(pcl[0][1]),
-                            len(pcl[1][0]) + len(pcl[1][1]),
-                            len(pcl[2][0]) + len(pcl[2][1]))
-        self.total_tiles = (len(pgt[0][0]) + len(pgt[0][1]),
-                            len(pgt[1][0]) + len(pgt[1][1]),
-                            len(pgt[2][0]) + len(pgt[2][1]))
+        self.reuse_tiles = (len(self.vram['pcl'][0][0]) + len(self.vram['pcl'][0][1]),
+                            len(self.vram['pcl'][1][0]) + len(self.vram['pcl'][1][1]),
+                            len(self.vram['pcl'][2][0]) + len(self.vram['pcl'][2][1]))
+        self.total_tiles = (len(self.vram['pgt'][0]), len(self.vram['pgt'][1]), len(self.vram['pgt'][2]))
         self.update_tile_info()
 
 
@@ -419,15 +394,14 @@ class TileViewer:
         if not self.msx: raise AttributeError('source image not found')
         for region in range(3):
             for frame in range(2):
-                #mappings = {v : n for n, v in enumerate(self.pgt[region][frame])}
                 for x, y, hash_ in self.pcl[region][frame]:
                     if frame == 0:
-                        for n, (c, p) in enumerate(self.pgt[region][frame][hash_]):
+                        for n, (c, p) in enumerate(self.vram['pgt'][region][hash_]):
                             tile: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[region * 64 + y * TILE_SIZE + n][x])
                             tile.c0 = c
                             tile.p0 = p
                     elif frame == 1:
-                        for n, (c, p) in enumerate(self.pgt[region][frame][hash_]):
+                        for n, (c, p) in enumerate(self.vram['pgt'][region][hash_]):
                             tile = cast(MSXBitmapUnit, self.msx[region * 64 + y * TILE_SIZE + n][x])
                             tile.c1 = c
                             tile.p1 = p
