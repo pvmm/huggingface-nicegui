@@ -7,6 +7,7 @@ TileViewer = class {
         this.canvas = document.getElementById(options.canvasId);
         this.ctx = this.canvas.getContext("2d");
         this.ctx.imageSmoothingEnabled = false;
+        this.hoveredSection = undefined;
         this.selectedX = options.selectedX;
         this.selectedY = options.selectedY;
         this.gridWidth = options.gridWidth;
@@ -42,13 +43,7 @@ TileViewer = class {
     }
 
     drawImage() {
-        this.ctx.drawImage(
-            this.image,
-            0,
-            0,
-            this.canvas.width,
-            this.canvas.height
-        );
+        this.ctx.drawImage(this.image, 0, 0, this.canvas.width, this.canvas.height);
     }
 
     drawGrid() {
@@ -85,6 +80,40 @@ TileViewer = class {
         );
     }
 
+    hoverSection(section) {
+        if (this.canvas === undefined || this.hoveredSection == section)
+            return;
+
+        const height = this.canvas.height / 3;
+
+        if (this.hoveredSection !== undefined) {
+            const src_top = this.hoveredSection * 64;
+            const dst_top = this.hoveredSection * 64 * this.zoom;
+            this.ctx.drawImage(this.image, 0, src_top, this.image.width, this.image.height / 3, 0, dst_top, this.canvas.width, height);
+        }
+
+        const top_ = section * 64 * this.zoom;
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        this.ctx.fillRect(0, top_, this.canvas.width, height);
+        this.drawGrid();
+
+        this.hoveredSection = section;
+    }
+
+    unhoverSection() {
+        if (this.canvas === undefined)
+            return;
+        if (this.hoveredSection === undefined)
+            return;
+
+        const src_top = this.hoveredSection * 64;
+        const dst_top = this.hoveredSection * 64 * this.zoom;
+        this.ctx.drawImage(this.image, 0, src_top, this.image.width, this.image.height / 3, 0, dst_top, this.canvas.width, this.canvas.height / 3);
+        this.drawGrid();
+
+        this.hoveredSection = undefined;
+    }
+
     canvasToTile(x, y) {
         return {
             x: Math.floor(x / this.zoom),
@@ -116,7 +145,7 @@ TileViewer = class {
                     e.clientY - rect.top
             )};
             emitEvent("tile_clicked", event);
-	}, { signal });
+        }, { signal });
     }
 
     removeEvents() {

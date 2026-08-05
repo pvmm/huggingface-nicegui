@@ -46,6 +46,7 @@ class TileViewer:
     current_frame: int
     allow_export: BoolStatus
     vram: tuple[ScreenSectionState, ScreenSectionState, ScreenSectionState]
+    active_section: int | None
 
     ui.add_css('''
         .pixelated {
@@ -62,6 +63,7 @@ class TileViewer:
     total_badges: list[ui.badge]
     frame_toggle: ui.toggle
     threshold_dropdown: ui.dropdown_button
+    context_menu: ui.context_menu
 
     def __init__(self, image: Image.Image | None = None) -> None:
         self.msx = None
@@ -98,6 +100,7 @@ class TileViewer:
         self.grid_height = 8
         self.selected_x = -1
         self.selected_y = -1
+        self.active_section = None
         self.build_ui()
 
 
@@ -121,7 +124,7 @@ class TileViewer:
 
                 with ui.dropdown_button('export as', auto_close=True).bind_enabled_from(self.load_status, 'is_enabled') as self.export_dropdown:
                     ui.item('PNG image', on_click=self.on_export_to_png_clicked)
-                    ui.item('MSX image', on_click=self.on_export_to_msx_clicked).bind_enabled_from(self.allow_export, 'is_enabled')
+                    ui.item('MSX VRAM layout file', on_click=self.on_export_to_msx_clicked).bind_enabled_from(self.allow_export, 'is_enabled')
                     ui.item('C code', on_click=self.on_export_to_c_clicked).bind_enabled_from(self.allow_export, 'is_enabled')
 
                 ui.space()
@@ -137,10 +140,18 @@ class TileViewer:
                               validation={'metatile size mismatch': lambda value: (self.msx.width * TILE_SIZE % value == 0) if self.msx else False})
                 ))
 
-            with ui.scroll_area().classes('w-full flex-1 border bg-gray-200').on('contextmenu.prevent', lambda: None):
+            with ui.scroll_area().classes('w-full flex-1 border bg-gray-200'): #.on('contextmenu.prevent', lambda: None):
                 canvas = (
                     ui.element('canvas').props('id=tile_canvas').on('contextmenu.prevent', lambda: None)
+                        .on('mousemove', self.on_mouseover_canvas, args=['offsetX', 'offsetY'], throttle=0.05)
+                        .on('mouseleave', self.on_mouseout_canvas)
                 )
+                with ui.context_menu() as self.context_menu:
+                    ui.menu_item('Edit even metatile')
+                    ui.menu_item('Edit odd metatile')
+                    ui.separator()
+                    ui.menu_item('Compress section tiles (seam carving)')
+                    #ui.menu_item('Compress section tiles (Levenshtein distance)')
 
             with ui.column().classes('items-start flex-nowrap w-full'):
                 self.reuse_badges = []
@@ -174,7 +185,24 @@ class TileViewer:
                     ui.button('update image', on_click=self.on_update_clicked) \
                             .bind_enabled_from(self.dirty_status, 'is_enabled')
 
-        ui.on("tile_clicked", self.on_tile_clicked)
+        #ui.on("tile_clicked", self.on_tile_clicked)
+
+
+    def on_mouseover_canvas(self, e: events.GenericEventArguments) -> None:
+        section = float(e.args.get('offsetY')) // self.zoom // 64
+        if self.active_section == section:
+            return
+        elif not self.active_section is None: # and self.context_menu.visible:
+            self.context_menu.close()
+            self.active_section = None
+        else:
+            ui.run_javascript(f'window.tileViewer.hoverSection({section});')
+            self.active_section = section
+
+
+    def on_mouseout_canvas(self, e: events.GenericEventArguments) -> None:
+        if self.active_section is None:
+            ui.run_javascript('window.tileViewer.unhoverSection();')
 
 
     def update_tile_info(self) -> None:
@@ -240,7 +268,7 @@ class TileViewer:
 
     def draw_frame(self, frame: int = 3) -> None:
         self.current_frame = frame
-        ui.run_javascript(f"""
+        ui.run_javascript(f'''
             window.tileViewer.initialize({{
                 canvasId: "tile_canvas",
                 image: "{self.images64[frame]}",
@@ -250,7 +278,7 @@ class TileViewer:
                 gridHeight: {self.grid_height},
                 zoom: {self.zoom},
             }});
-        """)
+        ''')
         self.redraw()
 
 
@@ -309,7 +337,7 @@ class TileViewer:
 
 
     def redraw(self) -> None:
-        ui.run_javascript(f"""
+        ui.run_javascript(f'''
             window.tileViewer.setState({{
                 selectedX: {self.selected_x},
                 selectedY: {self.selected_y},
@@ -318,7 +346,7 @@ class TileViewer:
                 zoom: {self.zoom},
             }});
             window.tileViewer.draw();
-        """)
+        ''')
 
 
     def set_zoom(self, zoom: int) -> None:
