@@ -292,8 +292,8 @@ class TileViewer:
         if not 'pgt' in self.vram[0]:
             raise AttributeError('source image not processed')
         buffer = BytesIO()
-        self.msx = self.engine.save(list(self.vram))
-        ui.download.content(buffer.getvalue(), 'image.raw')
+        slackspaces = self.engine.save(list(self.vram), buffer)
+        ui.download.content(buffer.getvalue(), 'image.s2i')
 
 
     def on_export_to_png_clicked(self) -> None:
@@ -378,10 +378,10 @@ class TileViewer:
              self.engine.stats(self.msx, 128, 192, threshold, algorithm)
         )
 
-        self.reuse_tiles = (len(self.vram['pcl'][0][0]) + len(self.vram['pcl'][0][1]),
-                            len(self.vram['pcl'][1][0]) + len(self.vram['pcl'][1][1]),
-                            len(self.vram['pcl'][2][0]) + len(self.vram['pcl'][2][1]))
-        self.total_tiles = (len(self.vram['pgt'][0]), len(self.vram['pgt'][1]), len(self.vram['pgt'][2]))
+        self.reuse_tiles = (len(self.vram[0]['pcl0']) + len(self.vram[0]['pcl1']),
+                            len(self.vram[1]['pcl0']) + len(self.vram[1]['pcl1']),
+                            len(self.vram[2]['pcl0']) + len(self.vram[2]['pcl1']))
+        self.total_tiles = (len(self.vram[0]['pgt']), len(self.vram[1]['pgt']), len(self.vram[2]['pgt']))
         self.update_tile_info()
 
 
@@ -394,16 +394,15 @@ class TileViewer:
         if not self.msx: raise AttributeError('source image not found')
         for region in range(3):
             for frame in range(2):
-                for x, y, hash_ in self.pcl[region][frame]:
-                    if frame == 0:
-                        for n, (c, p) in enumerate(self.vram['pgt'][region][hash_]):
-                            tile: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[region * 64 + y * TILE_SIZE + n][x])
-                            tile.c0 = c
-                            tile.p0 = p
-                    elif frame == 1:
-                        for n, (c, p) in enumerate(self.vram['pgt'][region][hash_]):
-                            tile = cast(MSXBitmapUnit, self.msx[region * 64 + y * TILE_SIZE + n][x])
-                            tile.c1 = c
-                            tile.p1 = p
+                for x, y, hash_ in self.vram[region]['pcl0']:
+                    for n, (p0, c0) in enumerate(zip(self.vram[region]['pgt'][hash_], self.vram[region]['pct'][hash_])):
+                        tile0: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[region * 64 + y * TILE_SIZE + n][x])
+                        tile0.c0 = c0
+                        tile0.p0 = p0
+                for x, y, hash_ in self.vram[region]['pcl1']:
+                    for n, (p1, c1) in enumerate(zip(self.vram[region]['pgt'][hash_], self.vram[region]['pct'][hash_])):
+                        tile1: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[region * 64 + y * TILE_SIZE + n][x])
+                        tile1.c1 = c1
+                        tile1.p1 = p1
 
         self.render_images(self.current_frame)
