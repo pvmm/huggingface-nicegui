@@ -21,6 +21,10 @@ from imageslider import ImageSliderWidget
 from bmpto105 import Engine, MSXBitmap, MSXBitmapRow, MSXBitmapUnit, RGBColor, ScreenSectionState
 
 
+# send debug message to stdout when running locally?
+debug: Callable[..., Any] = print # lambda *args, **kwargs: None
+
+
 PALETTE = [
     (0, 0, 0), (0, 0, 0), (0x24, 0xda, 0x24), (0x68, 0xff, 0x68), (0x24, 0x24, 0xff), (0x48, 0x68, 0xff),
     (0xb6, 0x24, 0x24), (0x48, 0xda, 0xff), (0xff, 0x24, 0x24), (0xff, 0x68, 0x68), (0xda, 0xda, 0x24),
@@ -39,14 +43,14 @@ class TileViewer:
     zoom: int
     grid_width: int
     grid_height: int
-    selected_x: int
-    selected_y: int
+    selected_pos: tuple(int, int)
     msx: MSXBitmap | None
     images64: list[str]
     current_frame: int
     allow_export: BoolStatus
     vram: tuple[ScreenSectionState, ScreenSectionState, ScreenSectionState]
     active_section: int | None
+    opened_contextmenu: bool
 
     ui.add_css('''
         .pixelated {
@@ -98,8 +102,8 @@ class TileViewer:
         self.zoom = 4
         self.grid_width = 8
         self.grid_height = 8
-        self.selected_x = -1
-        self.selected_y = -1
+        self.selected_pos = (-1, -1)
+        self.opened_contextmenu = False
         self.active_section = None
         self.build_ui()
 
@@ -140,18 +144,13 @@ class TileViewer:
                               validation={'metatile size mismatch': lambda value: (self.msx.width * TILE_SIZE % value == 0) if self.msx else False})
                 ))
 
-            with ui.scroll_area().classes('w-full flex-1 border bg-gray-200'): #.on('contextmenu.prevent', lambda: None):
+            with ui.scroll_area().classes('w-full flex-1 border bg-gray-200').on('contextmenu.prevent', lambda: None):
                 canvas = (
-                    ui.element('canvas').props('id=tile_canvas').on('contextmenu.prevent', lambda: None)
+                    ui.element('canvas').props('id=tile_canvas')
+                        .on('click', self.on_menu_invoked, args=['offsetX', 'offsetY', 'clientX', 'clientY'])
                         .on('mousemove', self.on_mouseover_canvas, args=['offsetX', 'offsetY'], throttle=0.05)
                         .on('mouseleave', self.on_mouseout_canvas)
                 )
-                with ui.context_menu() as self.context_menu:
-                    ui.menu_item('Edit even metatile')
-                    ui.menu_item('Edit odd metatile')
-                    ui.separator()
-                    ui.menu_item('Compress section tiles (seam carving)')
-                    #ui.menu_item('Compress section tiles (Levenshtein distance)')
 
             with ui.column().classes('items-start flex-nowrap w-full'):
                 self.reuse_badges = []
@@ -188,12 +187,50 @@ class TileViewer:
         #ui.on("tile_clicked", self.on_tile_clicked)
 
 
+    async def on_menu_invoked(self, e: events.GenericEventArguments) -> None:
+        # ignore multiple events
+        if self.opened_contextmenu:
+            return
+
+        debug('on_contextmenu_invoked called')
+        self.opened_contextmenu = True
+
+        # update active screen section
+        section = int(e.args.get('offsetY')) // self.zoom // 64
+        if self.active_section != section:
+            ui.run_javascript(f'window.tileViewer.hoverSection({section});')
+            self.active_section = section
+
+        # update selected tile
+        self.selected_pos = (int(e.args.get('offsetX')) // self.zoom, int(e.args.get('offsetY')) // self.zoom)
+        ui.run_javascript(f'window.tileViewer.setSelection({self.selected_pos[0]}, {self.selected_pos[1]});')
+
+        # display context dialog
+        self.opened_contextmenu = False
+        with ui.dialog().props('transition-show=none transition-hide=none') as dialog:
+            with ui.card().style(f'''
+                                 position: absolute;
+                                 width: 400px;
+                                 left: {e.args.get('clientX')}px;
+                                 top: {e.args.get('clientY')}px;
+                                 max-width: None;'''):
+                with ui.column().classes('w-full justify-start'):
+                    ui.label(f'Reused tiles: {self.reuse_tiles[self.active_section]} / Distinct tiles: {self.total_tiles[self.active_section]}')
+                    ui.button('Edit even frame metatile')
+                    ui.button('Edit odd frame metatile')
+        await dialog
+
+        # deselect metatile
+        ui.run_javascript(f'window.tileViewer.unsetSelection({self.selected_pos[0]}, {self.selected_pos[1]});')
+
+
     def on_mouseover_canvas(self, e: events.GenericEventArguments) -> None:
-        section = float(e.args.get('offsetY')) // self.zoom // 64
+        '''update active screen section'''
+        section = int(e.args.get('offsetY')) // self.zoom // 64
         if self.active_section == section:
             return
         elif not self.active_section is None: # and self.context_menu.visible:
-            self.context_menu.close()
+            #self.context_menu.close()
             self.active_section = None
         else:
             ui.run_javascript(f'window.tileViewer.hoverSection({section});')
@@ -201,6 +238,7 @@ class TileViewer:
 
 
     def on_mouseout_canvas(self, e: events.GenericEventArguments) -> None:
+        debug('on_mouseout_canvas called')
         if self.active_section is None:
             ui.run_javascript('window.tileViewer.unhoverSection();')
 
@@ -272,8 +310,8 @@ class TileViewer:
             window.tileViewer.initialize({{
                 canvasId: "tile_canvas",
                 image: "{self.images64[frame]}",
-                selectedX: {self.selected_x},
-                selectedY: {self.selected_y},
+                selectedX: {self.selected_pos[0]},
+                selectedY: {self.selected_pos[1]},
                 gridWidth: {self.grid_width},
                 gridHeight: {self.grid_height},
                 zoom: {self.zoom},
@@ -339,8 +377,8 @@ class TileViewer:
     def redraw(self) -> None:
         ui.run_javascript(f'''
             window.tileViewer.setState({{
-                selectedX: {self.selected_x},
-                selectedY: {self.selected_y},
+                selectedX: {self.selected_pos[0]},
+                selectedY: {self.selected_pos[1]},
                 gridWidth: {self.grid_width},
                 gridHeight: {self.grid_height},
                 zoom: {self.zoom},
@@ -360,19 +398,18 @@ class TileViewer:
         if self.waiting_tile_editor:
             return
         self.waiting_tile_editor.enable()
-        self.selected_x = int(e.args['x'] // self.grid_width) * self.grid_width
-        self.selected_y = int(e.args['y'] // self.grid_height) * self.grid_height
+        self.selected_pos = (int(e.args['x'] // self.grid_width) * self.grid_width, int(e.args['y'] // self.grid_height) * self.grid_height)
         self.redraw()
 
         frame = 1 + int(e.args['button'] // 2)
-        data = self.msx.to_metatile(int(self.selected_x // TILE_SIZE), int(self.selected_y // TILE_SIZE * TILE_SIZE),
+        data = self.msx.to_metatile(int(self.selected_pos[0] // TILE_SIZE), int(self.selected_pos[1] // TILE_SIZE * TILE_SIZE),
                                     int(self.grid_width // TILE_SIZE), self.grid_height, frame)
         # Fix here
         metatile = from_105_to_metatile(data, self.grid_width, self.grid_height)
 
         width = min(common.SCREEN_WIDTH * 0.90, 260 + self.msx.width * GRID_PIXEL_MAX)
-        with ui.dialog() as dialog, ui.card().style(f'max-width: None; width: {width}px;') as parent:
-            editor = TileEditor(parent, metatile)
+        with ui.dialog() as dialog, ui.card().style(f'max-width: None; width: {width}px;'):
+            editor = TileEditor(dialog, metatile)
             with ui.row().classes('w-full justify-end'):
                 ui.button('OK', on_click=lambda: dialog.submit(True))
                 ui.button('Cancel', on_click=lambda: dialog.submit(False))
@@ -386,7 +423,7 @@ class TileViewer:
                     if x % TILE_SIZE == 0:
                         fg, bg = row.get_fg(x), row.get_bg(x)
                     bit = True if row[x] == fg else False
-                    bpu: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[y + self.selected_y][(x + self.selected_x) // TILE_SIZE])
+                    bpu: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[y + self.selected_pos[1]][(x + self.selected_pos[0]) // TILE_SIZE])
                     bpu.from_rgb(x % TILE_SIZE, bit, fg, bg, frame)
             # update PGT and PNT structures (TODO: update only the affected region)
             self.process_tiles(self.threshold_dropdown.text, 0.0)

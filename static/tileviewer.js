@@ -34,6 +34,19 @@ TileViewer = class {
         this.gridHeight = state.gridHeight;
     }
 
+    setSelection(x, y) {
+        this.selectedX = x;
+        this.selectedY = y;
+        this.drawSelection('#ff0000');
+    }
+
+    unsetSelection(x, y) {
+        this.selectedX = x;
+        this.selectedY = y;
+        this.drawImage();
+        this.hoverSection(this.hoveredSection, true);
+    }
+
     draw() {
         this.canvas.width = this.image.width * this.zoom;
         this.canvas.height = this.image.height * this.zoom;
@@ -66,22 +79,23 @@ TileViewer = class {
         this.ctx.stroke();
     }
 
-    drawSelection() {
-        if (this.selectedCol < 0)
+    drawSelection(color = "#ff0000", lineWidth = 1) {
+        if (this.selectedX < 0 || this.selectedY < 0)
             return;
 
-        this.ctx.strokeStyle = "#ff0000";
-        this.ctx.lineWidth = 2;
+        console.log('drawSelection');
+        this.ctx.strokeStyle = color;
+        this.ctx.lineWidth = 1;
         this.ctx.strokeRect(
-            Math.floor(this.selectedX / this.gridWidth) * this.gridWidth * this.zoom,
-            Math.floor(this.selectedY / this.gridHeight) * this.gridHeight * this.zoom,
-            this.gridWidth * this.zoom,
-            this.gridHeight * this.zoom
+            Math.floor(this.selectedX / this.gridWidth) * this.gridWidth * this.zoom + 2,
+            Math.floor(this.selectedY / this.gridHeight) * this.gridHeight * this.zoom + 2,
+            this.gridWidth * this.zoom - 3,
+            this.gridHeight * this.zoom - 3
         );
     }
 
-    hoverSection(section) {
-        if (this.canvas === undefined || this.hoveredSection == section)
+    hoverSection(section, force = false) {
+        if (!force && (this.canvas === undefined || this.hoveredSection == section))
             return;
 
         const height = this.canvas.height / 3;
