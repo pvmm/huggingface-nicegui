@@ -174,6 +174,7 @@ class TileViewer:
                     with ui.dropdown_button('DCT', auto_close=True) as self.threshold_dropdown:
                         ui.item('DCT', on_click=lambda: self.threshold_dropdown.set_text('DCT'))
                         ui.item('SVD', on_click=lambda: self.threshold_dropdown.set_text('SVD'))
+                        ui.item('KMC', on_click=lambda: self.threshold_dropdown.set_text('KMC'))
                     self.threshold_number = (
                             ui.number(label='Threshold', min=0.0, value=0.0, step=0.1, max=1.0, format='%0.1f',
                                       on_change=self.on_change_threshold,
@@ -216,6 +217,8 @@ class TileViewer:
                                  max-width: None;'''):
                 with ui.column().classes('w-full justify-start'):
                     ui.label(f'Reused tiles: {self.reuse_tiles[self.active_section]} / Distinct tiles: {self.total_tiles[self.active_section]}')
+                    ui.button('Copy metatile')
+                    ui.button('Paste metatile')
                     ui.button('Edit even frame metatile')
                     ui.button('Edit odd frame metatile')
         await dialog
@@ -446,7 +449,10 @@ class TileViewer:
         self.reuse_tiles = (len(self.vram[0]['pcl0']) + len(self.vram[0]['pcl1']),
                             len(self.vram[1]['pcl0']) + len(self.vram[1]['pcl1']),
                             len(self.vram[2]['pcl0']) + len(self.vram[2]['pcl1']))
+        debug(f'reuse_tiles = {self.reuse_tiles[0]}, {self.reuse_tiles[1]}, {self.reuse_tiles[2]}')
         self.total_tiles = (len(self.vram[0]['pgt']), len(self.vram[1]['pgt']), len(self.vram[2]['pgt']))
+        debug(f'total_tiles = {self.total_tiles}')
+
         self.update_tile_info()
 
 
