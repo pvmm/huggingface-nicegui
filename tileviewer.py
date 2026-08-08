@@ -1,4 +1,4 @@
-from typing import cast, Callable
+from typing import cast, Callable, Any
 from nicegui import ui, app, events, run
 from PIL import Image
 from io import BytesIO
@@ -43,7 +43,7 @@ class TileViewer:
     zoom: int
     grid_width: int
     grid_height: int
-    selected_pos: tuple(int, int)
+    selected_pos: tuple[int, int]
     msx: MSXBitmap | None
     images64: list[str]
     current_frame: int
