@@ -37,9 +37,9 @@ class TileViewer:
     dirty_status: BoolStatus
     threshold_status: BoolStatus
     waiting_tile_editor: BoolStatus
-    reuse_tiles: tuple[int, int, int]
-    total_tiles: tuple[int, int, int]
-    threshold: float
+    reuse_tiles: list[int]
+    total_tiles: list[int]
+    threshold: int
     zoom: int
     grid_width: int
     grid_height: int
@@ -48,7 +48,7 @@ class TileViewer:
     images64: list[str]
     current_frame: int
     allow_export: BoolStatus
-    vram: tuple[ScreenSectionState, ScreenSectionState, ScreenSectionState]
+    vram: list[ScreenSectionState | None]
     active_section: int | None
     opened_contextmenu: bool
 
@@ -63,8 +63,6 @@ class TileViewer:
     grid_width_number: ui.number
     grid_height_number: ui.number
     threshold_number: ui.number
-    reuse_badges: list[ui.badge]
-    total_badges: list[ui.badge]
     frame_toggle: ui.toggle
     threshold_dropdown: ui.dropdown_button
     context_menu: ui.context_menu
@@ -96,9 +94,10 @@ class TileViewer:
         self.allow_export = b4
 
         self.engine = Engine(PALETTE)
-        self.reuse_tiles = (0, 0, 0)
-        self.total_tiles = (0, 0, 0)
-        self.threshold = 0.0
+        self.vram = [None, None, None]
+        self.reuse_tiles = [0, 0, 0]
+        self.total_tiles = [0, 0, 0]
+        self.threshold = 0
         self.zoom = 4
         self.grid_width = 8
         self.grid_height = 8
@@ -152,41 +151,6 @@ class TileViewer:
                         .on('mouseleave', self.on_mouseout_canvas)
                 )
 
-            with ui.column().classes('items-start flex-nowrap w-full'):
-                self.reuse_badges = []
-                self.total_badges = []
-                with ui.row().classes('flex-nowrap items-center'):
-                    ui.label('Tiles reused:')
-                    self.reuse_badges.append(ui.badge('0', color='purple').tooltip('top 64x8 tiles'))
-                    ui.label('/')
-                    self.reuse_badges.append(ui.badge('0', color='purple').tooltip('middle 64x8 tiles'))
-                    ui.label('/')
-                    self.reuse_badges.append(ui.badge('0', color='purple').tooltip('bottom 64x8 tiles'))
-                    ui.label('Tiles total:')
-                    self.total_badges.append(ui.badge('0', color='purple').tooltip('top 64x8 tiles'))
-                    ui.label('/')
-                    self.total_badges.append(ui.badge('0', color='purple').tooltip('middle 64x8 tiles'))
-                    ui.label('/')
-                    self.total_badges.append(ui.badge('0', color='purple').tooltip('bottom 64x8 tiles'))
-
-                with ui.row().classes('flex-nowrap items-center'):
-                    ui.label('Compression type:')
-                    with ui.dropdown_button('DCT', auto_close=True) as self.threshold_dropdown:
-                        ui.item('DCT', on_click=lambda: self.threshold_dropdown.set_text('DCT'))
-                        ui.item('SVD', on_click=lambda: self.threshold_dropdown.set_text('SVD'))
-                        ui.item('KMC', on_click=lambda: self.threshold_dropdown.set_text('KMC'))
-                    self.threshold_number = (
-                            ui.number(label='Threshold', min=0.0, value=0.0, step=0.1, max=1.0, format='%0.1f',
-                                      on_change=self.on_change_threshold,
-                                      validation={'not a number': lambda val: val is not None}
-                                  ).classes('w-[170px]').props('debounce=500')
-                            .bind_enabled_from(self.threshold_status, 'is_enabled')
-                    )
-                    ui.button('update image', on_click=self.on_update_clicked) \
-                            .bind_enabled_from(self.dirty_status, 'is_enabled')
-
-        #ui.on("tile_clicked", self.on_tile_clicked)
-
 
     async def on_menu_invoked(self, e: events.GenericEventArguments) -> None:
         # ignore multiple events
@@ -197,9 +161,9 @@ class TileViewer:
         self.opened_contextmenu = True
 
         # update active screen section
-        section = int(e.args.get('offsetY')) // self.zoom // 64
+        section = 1 << (int(e.args.get('offsetY')) // self.zoom // 64)
         if self.active_section != section:
-            ui.run_javascript(f'window.tileViewer.hoverSection({section});')
+            ui.run_javascript(f'window.tileViewer.hoverSection({section // 2});')
             self.active_section = section
 
         # update selected tile
@@ -211,16 +175,33 @@ class TileViewer:
         with ui.dialog().props('transition-show=none transition-hide=none') as dialog:
             with ui.card().style(f'''
                                  position: absolute;
-                                 width: 400px;
+                                 width: 450px;
                                  left: {e.args.get('clientX')}px;
                                  top: {e.args.get('clientY')}px;
-                                 max-width: None;'''):
+                                 max-width: None;''').classes('w-full flex-nowrap'):
                 with ui.column().classes('w-full justify-start'):
-                    ui.label(f'Reused tiles: {self.reuse_tiles[self.active_section]} / Distinct tiles: {self.total_tiles[self.active_section]}')
-                    ui.button('Copy metatile')
-                    ui.button('Paste metatile')
-                    ui.button('Edit even frame metatile')
-                    ui.button('Edit odd frame metatile')
+                    ui.label(f'Reused tiles: {self.reuse_tiles[self.active_section // 2]} / Distinct tiles: {self.total_tiles[self.active_section // 2]}')
+                    #ui.button('Copy metatile')
+                    #ui.button('Paste metatile')
+                    with ui.card().classes('items-start flex-nowrap w-full'):
+                        with ui.row().classes('items-center w-full'):
+                            ui.button('Despeckle', on_click=self.on_despeckle_clicked)
+                            self.threshold_number = (
+                                    ui.number(label='Color threshold', min=0, value=30, step=1, max=128, format='%d',
+                                              validation={'not a number': lambda val: val is not None}
+                                    ).classes('w-[100px]').props('debounce=500')
+                                    .bind_enabled_from(self.threshold_status, 'is_enabled')
+                            )
+                            (
+                                    ui.number(label='Max neighbors', min=1, value=3, step=1, max=7, format='%d',
+                                              validation={'not a number': lambda val: val is not None}
+                                    ).classes('w-[100px]').props('debounce=500')
+                                    .bind_enabled_from(self.threshold_status, 'is_enabled')
+                            )
+
+                    with ui.row().classes('items-start flex-nowrap w-full'):
+                        ui.button('Edit even frame')
+                        ui.button('Edit odd frame')
         await dialog
 
         # deselect metatile
@@ -229,14 +210,14 @@ class TileViewer:
 
     def on_mouseover_canvas(self, e: events.GenericEventArguments) -> None:
         '''update active screen section'''
-        section = int(e.args.get('offsetY')) // self.zoom // 64
+        section = 1 << (int(e.args.get('offsetY')) // self.zoom // 64)
         if self.active_section == section:
             return
         elif not self.active_section is None: # and self.context_menu.visible:
             #self.context_menu.close()
             self.active_section = None
         else:
-            ui.run_javascript(f'window.tileViewer.hoverSection({section});')
+            ui.run_javascript(f'window.tileViewer.hoverSection({section // 2});')
             self.active_section = section
 
 
@@ -244,21 +225,6 @@ class TileViewer:
         debug('on_mouseout_canvas called')
         if self.active_section is None:
             ui.run_javascript('window.tileViewer.unhoverSection();')
-
-
-    def update_tile_info(self) -> None:
-        for n in range(3):
-            self.reuse_badges[n].set_text(str(self.reuse_tiles[n]))
-            if self.total_tiles[n] > 255:
-                bg = 'red'
-            elif self.total_tiles[n] > 200:
-                bg = 'yellow'
-            else:
-                bg = 'green'
-            self.total_badges[n].set_text_color(get_text_color(bg))
-            self.total_badges[n].set_background_color(bg)
-            self.total_badges[n].set_text(str(self.total_tiles[n]))
-        self.threshold_status.enable()
 
 
     def load_image(self, data: bytes) -> None:
@@ -279,8 +245,7 @@ class TileViewer:
             return
 
         # update tile info
-        self.process_tiles(self.threshold_dropdown.text)
-        self.update_tile_info()
+        self.process_tiles(7, 'DCT')
 
         # reset visible images
         self.render_images(frame)
@@ -290,7 +255,6 @@ class TileViewer:
         enable(self.grid_width_number)
         self.grid_height_number.set_value(8);
         enable(self.grid_height_number)
-        self.threshold_number.set_value(0.0);
         enable(self.frame_toggle)
 
 
@@ -342,14 +306,13 @@ class TileViewer:
             self.redraw()
 
 
-    def on_change_threshold(self, event: events.ValueChangeEventArguments[float | None]) -> None:
-        if event.value is None:
+    def on_despeckle_clicked(self) -> None:
+        if self.active_section is None:
             return
         try:
             self.threshold_status.disable()
-            self.process_tiles(self.threshold_dropdown.text, 0.0)
-            self.threshold = event.value
-            self.update_tile_info()
+            self.threshold = self.threshold_number.value or 0
+            self.process_tiles(self.active_section, 'DKL', threshold=self.threshold)
             self.dirty_status.enable()
         except Exception as e:
             traceback.print_exc()
@@ -358,10 +321,10 @@ class TileViewer:
 
 
     def on_export_to_msx_clicked(self) -> None:
-        if not 'pgt' in self.vram[0]:
-            raise AttributeError('source image not processed')
+        if not all(self.vram):
+            raise AttributeError('source image not completely processed')
         buffer = BytesIO()
-        slackspaces = self.engine.save(list(self.vram), buffer)
+        slackspaces = self.engine.save(cast(list[ScreenSectionState], self.vram), buffer)
         ui.download.content(buffer.getvalue(), 'image.s2i')
 
 
@@ -429,31 +392,35 @@ class TileViewer:
                     bpu: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[y + self.selected_pos[1]][(x + self.selected_pos[0]) // TILE_SIZE])
                     bpu.from_rgb(x % TILE_SIZE, bit, fg, bg, frame)
             # update PGT and PNT structures (TODO: update only the affected region)
-            self.process_tiles(self.threshold_dropdown.text, 0.0)
+            self.process_tiles(7, 'DCT', threshold=0.0)
             self.render_images(self.current_frame)
         self.waiting_tile_editor.disable()
 
 
-    def process_tiles(self, algorithm: str = 'DCT', threshold: float = 0.0) -> None:
+    def process_tiles(self, section: int = 7, algorithm: str = 'DKL', **kwargs: float | int) -> None:
         """Run outside class so we don't have to pickle it."""
         if not self.msx: raise AttributeError('source image not found')
-
+        debug(f'process_tiles({section}, {algorithm}, {kwargs.get('threshold', 0.0)})')
         self.dirty_status.disable()
 
-        self.vram = (
-             self.engine.stats(self.msx, 0, 64, threshold, algorithm),
-             self.engine.stats(self.msx, 64, 128, threshold, algorithm),
-             self.engine.stats(self.msx, 128, 192, threshold, algorithm)
-        )
+        if section & 1:
+            self.vram[0] = self.engine.stats(self.msx, 0, 64, algorithm, **kwargs)
+            if self.vram[0] is None: raise AttributeError('VRAM section 0 is incomplete')
+            self.reuse_tiles[0] = len(self.vram[0]['pcl0']) + len(self.vram[0]['pcl1'])
+            self.total_tiles[0] = len(self.vram[0]['pgt'])
+        if section & 2:
+            self.vram[1] = self.engine.stats(self.msx, 64, 128, algorithm, **kwargs)
+            if self.vram[1] is None: raise AttributeError('VRAM section 0 is incomplete')
+            self.reuse_tiles[1] = len(self.vram[1]['pcl0']) + len(self.vram[1]['pcl1'])
+            self.total_tiles[1] = len(self.vram[1]['pgt'])
+        if section & 4:
+            self.vram[2] = self.engine.stats(self.msx, 128, 192, algorithm, **kwargs)
+            if self.vram[2] is None: raise AttributeError('VRAM section 0 is incomplete')
+            self.reuse_tiles[2] = len(self.vram[2]['pcl0']) + len(self.vram[2]['pcl1'])
+            self.total_tiles[2] = len(self.vram[2]['pgt'])
 
-        self.reuse_tiles = (len(self.vram[0]['pcl0']) + len(self.vram[0]['pcl1']),
-                            len(self.vram[1]['pcl0']) + len(self.vram[1]['pcl1']),
-                            len(self.vram[2]['pcl0']) + len(self.vram[2]['pcl1']))
         debug(f'reuse_tiles = {self.reuse_tiles[0]}, {self.reuse_tiles[1]}, {self.reuse_tiles[2]}')
-        self.total_tiles = (len(self.vram[0]['pgt']), len(self.vram[1]['pgt']), len(self.vram[2]['pgt']))
         debug(f'total_tiles = {self.total_tiles}')
-
-        self.update_tile_info()
 
 
     def on_update_clicked(self) -> None:
@@ -463,17 +430,19 @@ class TileViewer:
 
     def process_image(self) -> None:
         if not self.msx: raise AttributeError('source image not found')
-        for region in range(3):
-            for frame in range(2):
-                for x, y, hash_ in self.vram[region]['pcl0']:
-                    for n, (p0, c0) in enumerate(zip(self.vram[region]['pgt'][hash_], self.vram[region]['pct'][hash_])):
-                        tile0: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[region * 64 + y * TILE_SIZE + n][x])
-                        tile0.c0 = c0
-                        tile0.p0 = p0
-                for x, y, hash_ in self.vram[region]['pcl1']:
-                    for n, (p1, c1) in enumerate(zip(self.vram[region]['pgt'][hash_], self.vram[region]['pct'][hash_])):
-                        tile1: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[region * 64 + y * TILE_SIZE + n][x])
-                        tile1.c1 = c1
-                        tile1.p1 = p1
+        for section in range(3):
+            if not self.vram[section]:
+                raise AttributeError('Missing image information')
+            vram = cast(ScreenSectionState, self.vram[section])
+            for x, y, hash_ in vram['pcl0']:
+                for n, (p0, c0) in enumerate(zip(vram['pgt'][hash_], vram['pct'][hash_])):
+                    tile0: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[section * 64 + y * TILE_SIZE + n][x])
+                    tile0.c0 = c0
+                    tile0.p0 = p0
+            for x, y, hash_ in vram['pcl1']:
+                for n, (p1, c1) in enumerate(zip(vram['pgt'][hash_], vram['pct'][hash_])):
+                    tile1: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[section * 64 + y * TILE_SIZE + n][x])
+                    tile1.c1 = c1
+                    tile1.p1 = p1
 
         self.render_images(self.current_frame)
