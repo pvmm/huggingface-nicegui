@@ -17,6 +17,7 @@ from fileloader import FileLoader
 from datatypes import Tile, from_105_to_metatile, TILE_SIZE, TileRow
 from tileeditor import TileEditor
 from imageslider import ImageSliderWidget
+from romwriter import overwrite_rom_file
 
 from bmpto105 import Engine, MSXBitmap, MSXBitmapRow, MSXBitmapUnit, RGBColor, ScreenSectionState
 
@@ -128,7 +129,7 @@ class TileViewer:
                 with ui.dropdown_button('export as', auto_close=True).bind_enabled_from(self.load_status, 'is_enabled') as self.export_dropdown:
                     ui.item('PNG image', on_click=self.on_export_to_png_clicked)
                     ui.item('MSX VRAM layout file', on_click=self.on_export_to_msx_clicked).bind_enabled_from(self.allow_export, 'is_enabled')
-                    ui.item('C code', on_click=self.on_export_to_c_clicked).bind_enabled_from(self.allow_export, 'is_enabled')
+                    ui.item('ROM file', on_click=self.on_export_to_rom_clicked).bind_enabled_from(self.allow_export, 'is_enabled')
 
                 ui.space()
 
@@ -329,15 +330,24 @@ class TileViewer:
 
 
     def on_export_to_png_clicked(self) -> None:
-        if self.msx:
-            buffer = BytesIO()
-            image = self.msx.to_image(3)
+        if not self.msx:
+            raise AttributeError('source image not found')
+        if all(self.vram):
+            raise AttributeError('source image not completely processed')
+        buffer = BytesIO()
+        image = self.msx.to_image(3)
+        if image:
             image.save(buffer, format='PNG')
             ui.download.content(buffer.getvalue(), 'image.png')
 
 
-    def on_export_to_c_clicked(self) -> None:
-        pass
+    def on_export_to_rom_clicked(self) -> None:
+        if not all(self.vram):
+            raise AttributeError('source image not completely processed')
+        buffer = BytesIO()
+        slackspaces = self.engine.save(cast(list[ScreenSectionState], self.vram), buffer)
+        file = overwrite_rom_file('image105.rom', 0x5c, buffer)
+        ui.download.content(file.getvalue(), 'image105.rom')
 
 
     def redraw(self) -> None:
