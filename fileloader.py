@@ -48,4 +48,4 @@ class FileLoader(ui.column):
     @display_task_dialog('Loading local image...')
     async def handle_upload(self, e: events.UploadEventArguments) -> None:
         """Processes the dropped/uploaded image file."""
-        self.on_loaded(await e.file.read())
+        await self.on_loaded(await e.file.read())

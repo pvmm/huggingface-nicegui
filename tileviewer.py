@@ -13,7 +13,6 @@ from common import add_handlers, file_to_base64, disable, enable, get_text_color
 
 from ui import BoolStatus
 from constants import GRID_PIXEL_MAX
-from fileloader import FileLoader
 from datatypes import Tile, from_105_to_metatile, TILE_SIZE, TileRow
 from tileeditor import TileEditor
 from imageslider import ImageSliderWidget
@@ -238,17 +237,20 @@ class TileViewer:
             ui.run_javascript('window.tileViewer.unhoverSection();')
 
 
-    def load_image(self, data: bytes) -> None:
+    async def load_image(self, data: bytes) -> None:
         try:
             image = Image.open(BytesIO(data)).convert("RGB")
-            self.set_image(image, frame=3)
+            if image.size != (256, 192):
+                raise AttributeError('wrong image size')
+            await self.set_image(image, frame=3)
         except Exception as e:
             traceback.print_exc()
             ui.notify(e)
 
 
-    def set_image(self, image: Image.Image, frame: int = 3) -> None:
+    async def set_image(self, image: Image.Image, frame: int = 3) -> None:
         try:
+            #self.msx = await run.io_bound(self.engine.convert, image)
             self.msx = self.engine.convert(image)
         except Exception as e:
             traceback.print_exc()
