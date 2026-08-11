@@ -38,8 +38,19 @@ class TileViewer:
     dirty_status: BoolStatus
     threshold_status: BoolStatus
     waiting_tile_editor: BoolStatus
+
     reuse_tiles: list[int]
     total_tiles: list[int]
+    @property
+    def display_tile_info0(self) -> str:
+        return f'Reused tiles: {self.reuse_tiles[0]} / Distinct tiles: {self.total_tiles[0]}'
+    @property
+    def display_tile_info1(self) -> str:
+        return f'Reused tiles: {self.reuse_tiles[1]} / Distinct tiles: {self.total_tiles[1]}'
+    @property
+    def display_tile_info2(self) -> str:
+        return f'Reused tiles: {self.reuse_tiles[2]} / Distinct tiles: {self.total_tiles[2]}'
+
     threshold: int
     zoom: int
     grid_width: int
@@ -81,7 +92,6 @@ class TileViewer:
         self.dirty_status = b1
 
         b2 = BoolStatus(
-                inherent_state=False,
                 function=lambda: (not self.msx is None))
         self.threshold_status = b2
 
@@ -181,7 +191,7 @@ class TileViewer:
                                  top: {e.args.get('clientY')}px;
                                  max-width: None;''').classes('w-full flex-nowrap'):
                 with ui.column().classes('w-full justify-start'):
-                    ui.label(f'Reused tiles: {self.reuse_tiles[self.active_section // 2]} / Distinct tiles: {self.total_tiles[self.active_section // 2]}')
+                    ui.label().bind_text_from(self, f'display_tile_info{self.active_section // 2}')
                     #ui.button('Copy metatile')
                     #ui.button('Paste metatile')
                     with ui.card().classes('items-start flex-nowrap w-full'):
@@ -309,7 +319,7 @@ class TileViewer:
 
     def on_despeckle_clicked(self) -> None:
         if self.active_section is None:
-            return
+            raise AttributeError('no section was selected')
         try:
             self.threshold_status.disable()
             self.threshold = self.threshold_number.value or 0
