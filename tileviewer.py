@@ -74,13 +74,13 @@ class TileViewer:
     grid_width_number: ui.number
     grid_height_number: ui.number
     threshold_number: ui.number
+    min_neighbors_number: ui.number
     frame_toggle: ui.toggle
     threshold_dropdown: ui.dropdown_button
     context_menu: ui.context_menu
 
-    def __init__(self, image: Image.Image | None = None) -> None:
+    def __init__(self) -> None:
         self.msx = None
-        if image: self.set_image(image)
 
         b0 = BoolStatus(function=lambda: (not self.msx is None))
         self.load_status = b0
@@ -107,7 +107,6 @@ class TileViewer:
         self.vram = [None, None, None]
         self.reuse_tiles = [0, 0, 0]
         self.total_tiles = [0, 0, 0]
-        self.threshold = 0
         self.zoom = 4
         self.grid_width = 8
         self.grid_height = 8
@@ -202,7 +201,7 @@ class TileViewer:
                                     ).classes('w-[100px]').props('debounce=500')
                                     .bind_enabled_from(self.threshold_status, 'is_enabled')
                             )
-                            (
+                            self.min_neighbors_number = (
                                     ui.number(label='Max neighbors', min=1, value=3, step=1, max=7, format='%d',
                                               validation={'not a number': lambda val: val is not None}
                                     ).classes('w-[100px]').props('debounce=500')
@@ -258,7 +257,7 @@ class TileViewer:
             return
 
         # update tile info
-        self.process_tiles(7, 'DCT')
+        self.process_tiles(7, 'NUL')
 
         # reset visible images
         self.render_images(frame)
@@ -301,11 +300,12 @@ class TileViewer:
 
 
     def remove_image(self) -> None:
-        if self.msx:
-            self.msx = None
-            disable(self.grid_width_number)
-            disable(self.grid_height_number)
-            ui.run_javascript('window.tileViewer.reset();');
+        if not self.msx:
+            raise AttributeError('source image not found')
+        self.msx = None
+        disable(self.grid_width_number)
+        disable(self.grid_height_number)
+        ui.run_javascript('window.tileViewer.reset();');
 
 
     def on_remove_image(self, event: events.GenericEventArguments) -> None:
@@ -324,8 +324,9 @@ class TileViewer:
             raise AttributeError('no section was selected')
         try:
             self.threshold_status.disable()
-            self.threshold = self.threshold_number.value or 0
-            self.process_tiles(self.active_section, 'DKL', threshold=self.threshold)
+            threshold = self.threshold_number.value or 0
+            min_neighbors = self.min_neighbors_number.value or 0
+            self.process_tiles(self.active_section, 'DKL', threshold=threshold, min_neightbors=min_neighbors)
             self.dirty_status.enable()
         except Exception as e:
             traceback.print_exc()
@@ -359,7 +360,7 @@ class TileViewer:
         buffer = BytesIO()
         slackspaces = self.engine.save(cast(list[ScreenSectionState], self.vram), buffer)
         file = overwrite_rom_file('image105.rom', 0x5c, buffer)
-        ui.download.content(file.getvalue(), 'image105.rom')
+        ui.download.content(file.read(), 'image105.rom')
 
 
     def redraw(self) -> None:

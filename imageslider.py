@@ -74,7 +74,7 @@ class ImageSliderWidget:
     @display_task_dialog("Loading image...")
     async def on_loaded(self) -> None:
         if not self.current_index is None:
-            self.on_loaded_callback(open(self.image_paths[self.current_index], 'rb').read())
+            await self.on_loaded_callback(open(self.image_paths[self.current_index], 'rb').read())
 
 
     async def go_to_image(self, event: events.GenericEventArguments, index: int) -> None:
