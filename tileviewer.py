@@ -184,7 +184,7 @@ class TileViewer:
         with ui.dialog().props('transition-show=none transition-hide=none') as dialog:
             with ui.card().style(f'''
                                  position: absolute;
-                                 width: 550px;
+                                 width: 510px;
                                  left: {e.args.get('clientX')}px;
                                  top: {e.args.get('clientY')}px;
                                  max-width: None;''').classes('w-full flex-nowrap'):
@@ -207,7 +207,8 @@ class TileViewer:
                                     ).classes('w-[100px]').props('debounce=500')
                                     .bind_enabled_from(self.threshold_status, 'is_enabled')
                             )
-                            ui.button('Update', on_click=self.on_update_clicked).tooltip('Apply filter to image')
+                            ui.button('Update', on_click=self.on_update_clicked).tooltip('Apply filter to image') \
+                                .bind_enabled_from(self.dirty_status, 'is_enabled')
 
                     with ui.row().classes('items-start flex-nowrap w-full'):
                         ui.button('Edit even frame')
@@ -425,7 +426,6 @@ class TileViewer:
         """Run outside class so we don't have to pickle it."""
         if not self.msx: raise AttributeError('source image not found')
         debug(f'process_tiles({section}, {algorithm}, {kwargs.get('threshold', 0.0)})')
-        self.dirty_status.disable()
 
         if section & 1:
             self.vram[0] = self.engine.stats(self.msx, 0, 64, algorithm, **kwargs)
@@ -448,8 +448,8 @@ class TileViewer:
 
 
     def on_update_clicked(self) -> None:
-        self.process_image()
         self.dirty_status.disable()
+        self.process_image()
 
 
     def process_image(self) -> None:
