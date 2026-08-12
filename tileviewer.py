@@ -184,7 +184,7 @@ class TileViewer:
         with ui.dialog().props('transition-show=none transition-hide=none') as dialog:
             with ui.card().style(f'''
                                  position: absolute;
-                                 width: 450px;
+                                 width: 550px;
                                  left: {e.args.get('clientX')}px;
                                  top: {e.args.get('clientY')}px;
                                  max-width: None;''').classes('w-full flex-nowrap'):
@@ -202,11 +202,12 @@ class TileViewer:
                                     .bind_enabled_from(self.threshold_status, 'is_enabled')
                             )
                             self.min_neighbors_number = (
-                                    ui.number(label='Max neighbors', min=1, value=3, step=1, max=7, format='%d',
+                                    ui.number(label='Max neighbors', min=1, value=4, step=1, max=4, format='%d',
                                               validation={'not a number': lambda val: val is not None}
                                     ).classes('w-[100px]').props('debounce=500')
                                     .bind_enabled_from(self.threshold_status, 'is_enabled')
                             )
+                            ui.button('Update', on_click=self.on_update_clicked).tooltip('Apply filter to image')
 
                     with ui.row().classes('items-start flex-nowrap w-full'):
                         ui.button('Edit even frame')
@@ -345,7 +346,7 @@ class TileViewer:
     def on_export_to_png_clicked(self) -> None:
         if not self.msx:
             raise AttributeError('source image not found')
-        if all(self.vram):
+        if not all(self.vram):
             raise AttributeError('source image not completely processed')
         buffer = BytesIO()
         image = self.msx.to_image(3)
@@ -452,6 +453,7 @@ class TileViewer:
 
 
     def process_image(self) -> None:
+        '''write result back to MSX image'''
         if not self.msx: raise AttributeError('source image not found')
         for section in range(3):
             if not self.vram[section]:
