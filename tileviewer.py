@@ -25,6 +25,7 @@ from bmpto105 import Engine, MSXBitmap, MSXBitmapRow, MSXBitmapUnit, RGBColor, S
 debug: Callable[..., Any] = print # lambda *args, **kwargs: None
 
 
+ALL_SECTIONS = 7
 PALETTE = [
     (0, 0, 0), (0, 0, 0), (0x24, 0xda, 0x24), (0x68, 0xff, 0x68), (0x24, 0x24, 0xff), (0x48, 0x68, 0xff),
     (0xb6, 0x24, 0x24), (0x48, 0xda, 0xff), (0xff, 0x24, 0x24), (0xff, 0x68, 0x68), (0xda, 0xda, 0x24),
@@ -35,7 +36,7 @@ PALETTE = [
 class TileViewer:
     loaded_status: BoolStatus
     dirty_status: BoolStatus
-    threshold_status: BoolStatus
+    despeckle_status: BoolStatus
     waiting_tile_editor: BoolStatus
 
     reuse_tiles: list[int]
@@ -91,8 +92,8 @@ class TileViewer:
         self.dirty_status = b1
 
         b2 = BoolStatus(
-                function=lambda: (not self.msx is None))
-        self.threshold_status = b2
+                    function=lambda: all(self.vram))
+        self.despeckle_status = b2
 
         b3 = BoolStatus(
                 inherent_state=False,
@@ -194,18 +195,19 @@ class TileViewer:
                     #ui.button('Paste metatile')
                     with ui.card().classes('items-start flex-nowrap w-full'):
                         with ui.row().classes('items-center w-full'):
-                            ui.button('Despeckle', on_click=self.on_despeckle_clicked)
+                            ui.button('Despeckle', on_click=self.on_despeckle_clicked) \
+                                .bind_enabled_from(self.despeckle_status, 'is_enabled')
                             self.threshold_number = (
                                     ui.number(label='Color threshold', min=0, value=30, step=1, max=128, format='%d',
                                               validation={'not a number': lambda val: val is not None}
                                     ).classes('w-[100px]').props('debounce=500')
-                                    .bind_enabled_from(self.threshold_status, 'is_enabled')
+                                    .bind_enabled_from(self.despeckle_status, 'is_enabled')
                             )
                             self.min_neighbors_number = (
                                     ui.number(label='Max neighbors', min=1, value=4, step=1, max=4, format='%d',
                                               validation={'not a number': lambda val: val is not None}
                                     ).classes('w-[100px]').props('debounce=500')
-                                    .bind_enabled_from(self.threshold_status, 'is_enabled')
+                                    .bind_enabled_from(self.despeckle_status, 'is_enabled')
                             )
                             ui.button('Update', on_click=self.on_update_clicked).tooltip('Apply filter to image') \
                                 .bind_enabled_from(self.dirty_status, 'is_enabled')
@@ -258,10 +260,8 @@ class TileViewer:
             ui.notify(e)
             return
 
-        # update tile info
-        self.process_tiles(7, 'NUL')
-
-        # reset visible images
+        # update tile info and render it
+        self.process_tiles(ALL_SECTIONS, 'NUL', threshold=0.0)
         self.render_images(frame)
 
         # enable all widgets
@@ -325,15 +325,16 @@ class TileViewer:
         if self.active_section is None:
             raise AttributeError('no section was selected')
         try:
-            self.threshold_status.disable()
+            self.vram[self.active_section] = None
+            #self.despeckle_status.disable()
             threshold = self.threshold_number.value or 0
             min_neighbors = self.min_neighbors_number.value or 0
             self.process_tiles(self.active_section, 'DKL', threshold=threshold, min_neightbors=min_neighbors)
             self.dirty_status.enable()
         except Exception as e:
             traceback.print_exc()
-        finally:
-            self.threshold_status.enable()
+        #finally:
+        #    self.despeckle_status.enable()
 
 
     def on_export_to_msx_clicked(self) -> None:
@@ -417,7 +418,7 @@ class TileViewer:
                     bpu: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[y + self.selected_pos[1]][(x + self.selected_pos[0]) // TILE_SIZE])
                     bpu.from_rgb(x % TILE_SIZE, bit, fg, bg, frame)
             # update PGT and PNT structures (TODO: update only the affected region)
-            self.process_tiles(7, 'DCT', threshold=0.0)
+            self.process_tiles(ALL_SECTIONS, 'NUL', threshold=0.0)
             self.render_images(self.current_frame)
         self.waiting_tile_editor.disable()
 
@@ -455,19 +456,18 @@ class TileViewer:
     def process_image(self) -> None:
         '''write result back to MSX image'''
         if not self.msx: raise AttributeError('source image not found')
-        for section in range(3):
-            if not self.vram[section]:
-                raise AttributeError('Missing image information')
-            vram = cast(ScreenSectionState, self.vram[section])
-            for x, y, hash_ in vram['pcl0']:
-                for n, (p0, c0) in enumerate(zip(vram['pgt'][hash_], vram['pct'][hash_])):
-                    tile0: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[section * 64 + y * TILE_SIZE + n][x])
-                    tile0.c0 = c0
-                    tile0.p0 = p0
-            for x, y, hash_ in vram['pcl1']:
-                for n, (p1, c1) in enumerate(zip(vram['pgt'][hash_], vram['pct'][hash_])):
-                    tile1: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[section * 64 + y * TILE_SIZE + n][x])
-                    tile1.c1 = c1
-                    tile1.p1 = p1
+        if self.vram[self.active_section] is None:
+            raise AttributeError('Missing image information')
+        vram = cast(ScreenSectionState, self.vram[self.active_section])
+        for x, y, hash_ in vram['pcl0']:
+            for n, (p0, c0) in enumerate(zip(vram['pgt'][hash_], vram['pct'][hash_])):
+                tile0: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[self.active_section * 64 + y * TILE_SIZE + n][x])
+                tile0.c0 = c0
+                tile0.p0 = p0
+        for x, y, hash_ in vram['pcl1']:
+            for n, (p1, c1) in enumerate(zip(vram['pgt'][hash_], vram['pct'][hash_])):
+                tile1: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[self.active_section * 64 + y * TILE_SIZE + n][x])
+                tile1.c1 = c1
+                tile1.p1 = p1
 
         self.render_images(self.current_frame)
