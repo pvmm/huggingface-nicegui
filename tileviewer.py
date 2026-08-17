@@ -326,19 +326,19 @@ class TileViewer:
         if self.active_section is None:
             raise AttributeError('no section was selected')
         try:
-            await self.despeckle_status.disable()
+            self.despeckle_status.disable()
             self.threshold_number.disable()
             self.min_neighbors_number.disable()
             threshold = self.threshold_number.value or 0
             min_neighbors = self.min_neighbors_number.value or 0
             await self.process_tiles(self.active_section, 'DKL', threshold=threshold, min_neightbors=min_neighbors)
-            await self.dirty_status.enable()
+            self.dirty_status.enable()
         except Exception as e:
             traceback.print_exc()
         finally:
             self.threshold_number.enable()
             self.min_neighbors_number.enable()
-            await self.despeckle_status.enable()
+            self.despeckle_status.enable()
 
 
     def on_export_to_msx_clicked(self) -> None:
@@ -393,7 +393,7 @@ class TileViewer:
             return
         if self.waiting_tile_editor:
             return
-        await self.waiting_tile_editor.enable()
+        self.waiting_tile_editor.enable()
         self.selected_pos = (int(e.args['x'] // self.grid_width) * self.grid_width, int(e.args['y'] // self.grid_height) * self.grid_height)
         self.redraw()
 
@@ -424,7 +424,7 @@ class TileViewer:
             # update PGT and PNT structures (TODO: update only the affected region)
             await self.process_tiles(ALL_SECTIONS, 'NUL', threshold=0.0)
             self.render_images(self.current_frame)
-        await self.waiting_tile_editor.disable()
+        self.waiting_tile_editor.disable()
 
 
     async def process_tiles(self, section: int = 7, algorithm: str = 'DKL', **kwargs: float | int) -> None:
@@ -453,7 +453,7 @@ class TileViewer:
 
 
     async def on_update_clicked(self) -> None:
-        await self.dirty_status.disable()
+        self.dirty_status.disable()
         self.process_image()
 
 

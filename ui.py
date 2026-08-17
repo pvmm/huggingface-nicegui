@@ -1,4 +1,3 @@
-import asyncio
 import json
 import urllib
 
@@ -23,15 +22,13 @@ class BoolStatus:
         self.function = function
         self.debug = debug
 
-    async def enable(self) -> None:
+    def enable(self) -> None:
         self._is_enabled = True
         self._explicit = True
-        await asyncio.sleep(0)
 
-    async def disable(self) -> None:
+    def disable(self) -> None:
         self._is_enabled = False
         self._explicit = True
-        await asyncio.sleep(0)
 
     @property
     def is_enabled(self) -> bool | None:
