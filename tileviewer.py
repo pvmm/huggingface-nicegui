@@ -460,6 +460,7 @@ class TileViewer:
     def process_image(self) -> None:
         '''write result back to MSX image'''
         if not self.msx: raise AttributeError('source image not found')
+        if self.active_section is None: raise AttributeError('no section was selected')
         if self.vram[self.active_section] is None:
             raise AttributeError('Missing image information')
         vram = cast(ScreenSectionState, self.vram[self.active_section])

@@ -1,4 +1,5 @@
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
+from typing import Any
 from nicegui import ui, events
 
 from sessionbroker import display_task_dialog
@@ -13,10 +14,10 @@ class FileLoader(ui.column):
     height: int
     message: str
     parent: ui.element
-    on_loaded: Callable[[bytes], None]
+    on_loaded: Callable[[bytes], Coroutine[Any, Any, None]]
     on_removed: Callable[[], None]
 
-    def __init__(self, parent: ui.element, message: str, width: int, height: int, on_loaded: Callable[[bytes], None], on_removed: Callable[[], None]) -> None:
+    def __init__(self, parent: ui.element, message: str, width: int, height: int, on_loaded: Callable[[bytes], Coroutine[Any, Any, None]], on_removed: Callable[[], None]) -> None:
         with parent:
             super().__init__()
             self.width = width

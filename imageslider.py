@@ -1,7 +1,8 @@
 import glob
 import os
 
-from typing import Callable, cast
+from collections.abc import Callable, Coroutine
+from typing import Any, cast
 from nicegui import ui, events
 from pathlib import Path
 from fileloader import FileLoader
@@ -10,14 +11,14 @@ from sessionbroker import display_task_dialog
 
 class ImageSliderWidget:
     image_paths: list[str] | str
-    on_loaded_callback: Callable[[bytes], None]
+    on_loaded_callback: Callable[[bytes], Coroutine[Any, Any, None]]
     on_removed_callback: Callable[[], None]
     current_index: int | None
     width: int
     height: int
     old_thumbnail: ui.card | None
 
-    def __init__(self, image_paths: list[str] | str, width: int, height: int, on_loaded: Callable[[bytes], None], on_removed: Callable[[], None]) -> None:
+    def __init__(self, image_paths: list[str] | str, width: int, height: int, on_loaded: Callable[[bytes], Coroutine[Any, Any, None]], on_removed: Callable[[], None]) -> None:
         """
         Initialize the image slider widget
 
