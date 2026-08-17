@@ -92,7 +92,8 @@ class TileViewer:
         self.dirty_status = b1
 
         b2 = BoolStatus(
-                    function=lambda: all(self.vram))
+                #inherent_state=False,
+                function=lambda: all(self.vram))
         self.despeckle_status = b2
 
         b3 = BoolStatus(
@@ -261,7 +262,7 @@ class TileViewer:
             return
 
         # update tile info and render it
-        self.process_tiles(ALL_SECTIONS, 'NUL', threshold=0.0)
+        await self.process_tiles(ALL_SECTIONS, 'NUL', threshold=0.0)
         self.render_images(frame)
 
         # enable all widgets
@@ -321,20 +322,23 @@ class TileViewer:
             self.redraw()
 
 
-    def on_despeckle_clicked(self) -> None:
+    async def on_despeckle_clicked(self) -> None:
         if self.active_section is None:
             raise AttributeError('no section was selected')
         try:
-            self.vram[self.active_section] = None
-            #self.despeckle_status.disable()
+            await self.despeckle_status.disable()
+            self.threshold_number.disable()
+            self.min_neighbors_number.disable()
             threshold = self.threshold_number.value or 0
             min_neighbors = self.min_neighbors_number.value or 0
-            self.process_tiles(self.active_section, 'DKL', threshold=threshold, min_neightbors=min_neighbors)
-            self.dirty_status.enable()
+            await self.process_tiles(self.active_section, 'DKL', threshold=threshold, min_neightbors=min_neighbors)
+            await self.dirty_status.enable()
         except Exception as e:
             traceback.print_exc()
-        #finally:
-        #    self.despeckle_status.enable()
+        finally:
+            self.threshold_number.enable()
+            self.min_neighbors_number.enable()
+            await self.despeckle_status.enable()
 
 
     def on_export_to_msx_clicked(self) -> None:
@@ -389,7 +393,7 @@ class TileViewer:
             return
         if self.waiting_tile_editor:
             return
-        self.waiting_tile_editor.enable()
+        await self.waiting_tile_editor.enable()
         self.selected_pos = (int(e.args['x'] // self.grid_width) * self.grid_width, int(e.args['y'] // self.grid_height) * self.grid_height)
         self.redraw()
 
@@ -418,38 +422,38 @@ class TileViewer:
                     bpu: MSXBitmapUnit = cast(MSXBitmapUnit, self.msx[y + self.selected_pos[1]][(x + self.selected_pos[0]) // TILE_SIZE])
                     bpu.from_rgb(x % TILE_SIZE, bit, fg, bg, frame)
             # update PGT and PNT structures (TODO: update only the affected region)
-            self.process_tiles(ALL_SECTIONS, 'NUL', threshold=0.0)
+            await self.process_tiles(ALL_SECTIONS, 'NUL', threshold=0.0)
             self.render_images(self.current_frame)
-        self.waiting_tile_editor.disable()
+        await self.waiting_tile_editor.disable()
 
 
-    def process_tiles(self, section: int = 7, algorithm: str = 'DKL', **kwargs: float | int) -> None:
+    async def process_tiles(self, section: int = 7, algorithm: str = 'DKL', **kwargs: float | int) -> None:
         """Run outside class so we don't have to pickle it."""
         if not self.msx: raise AttributeError('source image not found')
-        debug(f'process_tiles({section}, {algorithm}, {kwargs.get('threshold', 0.0)})')
+        debug(f'process_tiles({section}, {algorithm}, {kwargs.get("threshold", 0.0)})')
 
         if section & 1:
-            self.vram[0] = self.engine.stats(self.msx, 0, 64, algorithm, **kwargs)
+            self.vram[0] = await run.io_bound(self.engine.stats, self.msx, 0, 64, algorithm, **kwargs)
             if self.vram[0] is None: raise AttributeError('VRAM section 0 is incomplete')
             self.reuse_tiles[0] = len(self.vram[0]['pcl0']) + len(self.vram[0]['pcl1'])
             self.total_tiles[0] = len(self.vram[0]['pgt'])
         if section & 2:
-            self.vram[1] = self.engine.stats(self.msx, 64, 128, algorithm, **kwargs)
+            self.vram[1] = await run.io_bound(self.engine.stats, self.msx, 64, 128, algorithm, **kwargs)
             if self.vram[1] is None: raise AttributeError('VRAM section 0 is incomplete')
             self.reuse_tiles[1] = len(self.vram[1]['pcl0']) + len(self.vram[1]['pcl1'])
             self.total_tiles[1] = len(self.vram[1]['pgt'])
         if section & 4:
-            self.vram[2] = self.engine.stats(self.msx, 128, 192, algorithm, **kwargs)
+            self.vram[2] = await run.io_bound(self.engine.stats, self.msx, 128, 192, algorithm, **kwargs)
             if self.vram[2] is None: raise AttributeError('VRAM section 0 is incomplete')
             self.reuse_tiles[2] = len(self.vram[2]['pcl0']) + len(self.vram[2]['pcl1'])
             self.total_tiles[2] = len(self.vram[2]['pgt'])
 
         debug(f'reuse_tiles = {self.reuse_tiles[0]}, {self.reuse_tiles[1]}, {self.reuse_tiles[2]}')
-        debug(f'total_tiles = {self.total_tiles}')
+        debug(f'total_tiles = {self.total_tiles[0]}, {self.total_tiles[1]}, {self.total_tiles[2]}')
 
 
-    def on_update_clicked(self) -> None:
-        self.dirty_status.disable()
+    async def on_update_clicked(self) -> None:
+        await self.dirty_status.disable()
         self.process_image()
 
 

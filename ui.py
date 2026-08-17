@@ -1,3 +1,4 @@
+import asyncio
 import json
 import urllib
 
@@ -13,21 +14,29 @@ from common import get_text_color
 
 class BoolStatus:
     _is_enabled: bool | None
+    _explicit: bool
     function: Callable[[], bool] | None
 
     def __init__(self, inherent_state: bool | None = None, function: Callable[[], bool] | None = None, debug: bool = False):
         self._is_enabled = inherent_state
+        self._explicit = False
         self.function = function
         self.debug = debug
 
-    def enable(self) -> None:
+    async def enable(self) -> None:
         self._is_enabled = True
+        self._explicit = True
+        await asyncio.sleep(0)
 
-    def disable(self) -> None:
+    async def disable(self) -> None:
         self._is_enabled = False
+        self._explicit = True
+        await asyncio.sleep(0)
 
     @property
     def is_enabled(self) -> bool | None:
+        if self._explicit:
+            return self._is_enabled
         if self.inherent_state:
             return self._is_enabled
         if not self.function is None:
@@ -42,6 +51,8 @@ class BoolStatus:
 
     @property
     def is_disabled(self) -> bool | None:
+        if self._explicit:
+            return not self._is_enabled
         if self.inherent_state:
             return not self._is_enabled
         if not self.function is None:
